@@ -71,6 +71,9 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   const ffmpeg = spawn(config.ffmpegPath, [
     "-hide_banner",
     "-loglevel", "warning",
+    "-fflags", "+genpts+discardcorrupt",
+    "-analyzeduration", "10000000",
+    "-probesize", "10000000",
     "-reconnect", "1",
     "-reconnect_streamed", "1",
     "-reconnect_delay_max", "5",
@@ -79,15 +82,19 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-i", streamUrl,
     "-map", "0:v:0?",
     "-map", "0:a:0?",
+    "-vf", "scale=min(1280\\,iw):-2:force_original_aspect_ratio=decrease,fps=30,format=yuv420p",
     "-c:v", "libx264",
     "-preset", "veryfast",
     "-tune", "zerolatency",
     "-profile:v", "baseline",
     "-level", "3.1",
-    "-pix_fmt", "yuv420p",
-    "-g", "48",
-    "-keyint_min", "48",
+    "-b:v", "2800k",
+    "-maxrate", "3200k",
+    "-bufsize", "6400k",
+    "-g", "60",
+    "-keyint_min", "60",
     "-sc_threshold", "0",
+    "-x264-params", "bframes=0:force-cfr=1:keyint=60:min-keyint=60:scenecut=0",
     "-c:a", "aac",
     "-b:a", "128k",
     "-ac", "2",
@@ -140,6 +147,41 @@ setInterval(() => {
     if (now - session.lastAccess > HLS_IDLE_TIMEOUT_MS) stopHlsSession(channelId);
   }
 }, 30_000).unref();
+
+streamRouter.get("/:channelId/hls/status", async (req: AuthedRequest, res) => {
+  const channelId = Number(req.params.channelId);
+  if (!Number.isInteger(channelId)) return res.status(400).json({ error: "Invalid channel id" });
+
+  const session = hlsSessions.get(channelId);
+  if (!session) {
+    return res.json({
+      active: false,
+      files: [],
+      message: "No FFmpeg HLS session has been started for this channel in this container."
+    });
+  }
+
+  let files: Array<{ name: string; size: number; modified: string }> = [];
+  let playlist = "";
+  try {
+    const entries = await fs.promises.readdir(session.dir);
+    files = await Promise.all(entries.sort().map(async (name) => {
+      const stat = await fs.promises.stat(path.join(session.dir, name));
+      return { name, size: stat.size, modified: stat.mtime.toISOString() };
+    }));
+    playlist = await fs.promises.readFile(path.join(session.dir, "index.m3u8"), "utf8").catch(() => "");
+  } catch {
+    files = [];
+  }
+
+  return res.json({
+    active: !session.exited,
+    exitCode: session.exitCode,
+    files,
+    playlist,
+    stderr: session.stderr
+  });
+});
 
 streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) => {
   const channelId = Number(req.params.channelId);

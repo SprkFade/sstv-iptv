@@ -14,6 +14,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
   const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
   const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
   const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8`, [channelId]);
+  const transcodeStatusSrc = useMemo(() => `/api/stream/${channelId}/hls/status`, [channelId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -101,6 +102,9 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           <div className="flex flex-wrap gap-2">
             <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={transcodeHlsSrc} target="_blank" rel="noreferrer">
               HLS <ExternalLink size={16} />
+            </a>
+            <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={transcodeStatusSrc} target="_blank" rel="noreferrer">
+              Status <ExternalLink size={16} />
             </a>
             <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={transcodeSrc} target="_blank" rel="noreferrer">
               TS <ExternalLink size={16} />
