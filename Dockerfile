@@ -18,6 +18,7 @@ ENV NODE_ENV=production
 LABEL org.opencontainers.image.source="https://github.com/SprkFade/sstv-iptv"
 LABEL org.opencontainers.image.description="SSTV IPTV mobile-first M3U and XMLTV PWA"
 LABEL org.opencontainers.image.licenses="MIT"
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/server/package.json ./server/package.json

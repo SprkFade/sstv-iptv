@@ -10,6 +10,7 @@ services:
       DATABASE_PATH: /app/data/sstv-iptv.sqlite
       CACHE_DIR: /app/cache
       SESSION_SECRET: ${SESSION_SECRET:-replace-with-a-long-random-secret}
+      FFMPEG_PATH: ffmpeg
     volumes:
       - ./data:/app/data
       - ./cache:/app/cache

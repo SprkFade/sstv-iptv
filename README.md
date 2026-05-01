@@ -9,7 +9,7 @@ A production-oriented, mobile-first IPTV guide that imports live channels from a
 - First-launch setup wizard for admin credentials, XtremeCodes login, guide settings, refresh cadence, and Plex server selection.
 - Plex OAuth for regular users with configured server access validation.
 - Channel browsing, groups, current airing view, search, favorites, and channel playback.
-- Desktop HLS playback with `hls.js`; mobile opens streams natively.
+- Desktop playback with HLS, raw proxy fallback, and FFmpeg live transcoding to browser-friendly H.264/AAC MPEG-TS; mobile opens streams natively.
 - Installable PWA shell with cached static assets.
 - SQLite data and cache directories persisted through bind mounts only.
 
@@ -67,6 +67,8 @@ The launch wizard collects:
 - Plex login, server selection, and token storage
 
 Set a long random `SESSION_SECRET` before exposing the app.
+
+`FFMPEG_PATH` defaults to `ffmpeg`. The published Docker image includes FFmpeg for desktop live transcoding.
 
 ## Data Persistence
 

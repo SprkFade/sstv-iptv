@@ -28,6 +28,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
   const [retryKey, setRetryKey] = useState(0);
   const mobile = typeof navigator !== "undefined" && isMobile();
   const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
+  const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
   const hlsSrc = useMemo(() => isHlsSource(src) ? src : hlsCandidate(src), [src]);
 
   useEffect(() => {
@@ -40,7 +41,8 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
 
     let hls: Hls | null = null;
     let tsPlayer: mpegts.Player | null = null;
-    let triedTs = false;
+    let triedTranscode = false;
+    let triedProxy = false;
     let disposed = false;
 
     const setPlaybackError = (message: string) => {
@@ -49,38 +51,54 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     const onVideoError = () => setPlaybackError("The browser could not decode this stream.");
     video.addEventListener("error", onVideoError);
 
-    const startMpegTs = () => {
-      if (triedTs || disposed) return;
-      triedTs = true;
+    const startMpegTs = (mode: "transcode" | "proxy") => {
+      if (disposed) return;
+      if (mode === "transcode" && triedTranscode) return;
+      if (mode === "proxy" && triedProxy) return;
+      if (mode === "transcode") triedTranscode = true;
+      if (mode === "proxy") triedProxy = true;
       hls?.destroy();
       hls = null;
+      tsPlayer?.destroy();
+      tsPlayer = null;
       setError("");
+
+      const streamUrl = mode === "transcode" ? transcodeSrc : proxySrc;
+      const label = mode === "transcode" ? "FFmpeg transcode" : "stream proxy";
 
       if (mpegts.getFeatureList().mseLivePlayback) {
         try {
           tsPlayer = mpegts.createPlayer({
             type: "mpegts",
             isLive: true,
-            url: proxySrc
+            url: streamUrl
           }, {
             enableWorker: true,
             lazyLoad: false,
             liveBufferLatencyChasing: true
           });
           tsPlayer.on(mpegts.Events.ERROR, (type, detail, info) => {
+            console.warn(`${label} playback error`, { type, detail, info });
+            if (mode === "transcode") {
+              startMpegTs("proxy");
+              return;
+            }
             const suffix = [type, detail].filter(Boolean).join(": ");
             setPlaybackError(suffix ? `MPEG-TS playback failed (${suffix}).` : "MPEG-TS playback failed.");
-            console.warn("MPEG-TS playback error", { type, detail, info });
           });
           tsPlayer.attachMediaElement(video);
           tsPlayer.load();
           return;
         } catch (err) {
+          if (mode === "transcode") {
+            startMpegTs("proxy");
+            return;
+          }
           setPlaybackError(err instanceof Error ? err.message : "The MPEG-TS player failed to start.");
         }
       }
 
-      video.src = proxySrc;
+      video.src = streamUrl;
     };
 
     if (hlsSrc) {
@@ -100,7 +118,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!data.fatal) return;
           console.warn("HLS playback error", data);
-          startMpegTs();
+          startMpegTs("transcode");
         });
         hls.loadSource(hlsSrc);
         hls.attachMedia(video);
@@ -113,14 +131,14 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
       }
     }
 
-    startMpegTs();
+    startMpegTs("transcode");
     return () => {
       disposed = true;
       hls?.destroy();
       tsPlayer?.destroy();
       video.removeEventListener("error", onVideoError);
     };
-  }, [hlsSrc, mobile, proxySrc, retryKey]);
+  }, [hlsSrc, mobile, proxySrc, retryKey, transcodeSrc]);
 
   if (mobile) {
     return (
@@ -148,6 +166,9 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-black p-3 text-sm text-white">
           <span>{error}</span>
           <div className="flex flex-wrap gap-2">
+            <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={transcodeSrc} target="_blank" rel="noreferrer">
+              Transcode <ExternalLink size={16} />
+            </a>
             <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={proxySrc} target="_blank" rel="noreferrer">
               Proxy <ExternalLink size={16} />
             </a>
