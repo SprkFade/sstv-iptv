@@ -21,6 +21,7 @@ export function SetupPage() {
   const [selectedServer, setSelectedServer] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [checkingPlex, setCheckingPlex] = useState(false);
 
   useEffect(() => {
     if (!loading && !setupRequired) navigate("/", { replace: true });
@@ -37,24 +38,33 @@ export function SetupPage() {
       .catch(() => undefined);
   }, []);
 
+  const checkPlexPin = async () => {
+    if (!plexPin || plexToken || checkingPlex) return;
+    setCheckingPlex(true);
+    try {
+      const result = await api.pollSetupPlexPin(plexPin.id);
+      if (!result.authenticated) return;
+      const availableServers = result.servers ?? [];
+      setError("");
+      setPlexToken(result.token ?? "");
+      setPlexUser(result.user?.username ?? "Plex user");
+      setServers(availableServers);
+      setSelectedServer(availableServers[0]?.clientIdentifier ?? "");
+      if (!availableServers.length) setError("Plex connected, but no Plex servers were found for this account.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Plex setup failed");
+    } finally {
+      setCheckingPlex(false);
+    }
+  };
+
   useEffect(() => {
     if (!plexPin || plexToken) return;
-    const timer = window.setInterval(async () => {
-      try {
-        const result = await api.pollSetupPlexPin(plexPin.id);
-        if (!result.authenticated) return;
-        window.clearInterval(timer);
-        setPlexToken(result.token ?? "");
-        setPlexUser(result.user?.username ?? "Plex user");
-        setServers(result.servers ?? []);
-        setSelectedServer(result.servers?.[0]?.clientIdentifier ?? "");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Plex setup failed");
-        window.clearInterval(timer);
-      }
-    }, 2500);
+    const timer = window.setInterval(() => {
+      checkPlexPin().catch(() => undefined);
+    }, 2000);
     return () => window.clearInterval(timer);
-  }, [plexPin, plexToken]);
+  }, [plexPin, plexToken, checkingPlex]);
 
   const selectedServerName = useMemo(
     () => servers.find((server) => server.clientIdentifier === selectedServer)?.name ?? "",
@@ -169,6 +179,14 @@ export function SetupPage() {
                 <a className="flex min-h-11 items-center justify-center rounded-md bg-accent px-4 font-semibold text-white" href={plexPin.authUrl} target="_blank" rel="noreferrer">
                   Continue with Plex
                 </a>
+                <button
+                  className="flex min-h-11 items-center justify-center rounded-md border border-line bg-panel px-4 font-semibold text-ink hover:bg-ink/5 disabled:opacity-60"
+                  type="button"
+                  disabled={checkingPlex}
+                  onClick={() => checkPlexPin().catch(() => undefined)}
+                >
+                  {checkingPlex ? "Checking Plex..." : "Check Plex connection"}
+                </button>
               </div>
             )}
 

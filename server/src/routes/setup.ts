@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getDb, isSetupComplete, setSetting, setting } from "../db/database.js";
 import { createSession } from "../auth/session.js";
 import { createPlexPin, getPlexResources, getPlexUser, pollPlexPin } from "../services/plex.js";
+import { requestOrigin } from "../utils/requestUrl.js";
 
 export const setupRouter = Router();
 
@@ -27,9 +28,9 @@ setupRouter.get("/defaults", guardSetup, (_req, res) => {
   });
 });
 
-setupRouter.post("/plex/pin", guardSetup, async (_req, res, next) => {
+setupRouter.post("/plex/pin", guardSetup, async (req, res, next) => {
   try {
-    res.json(await createPlexPin());
+    res.json(await createPlexPin(`${requestOrigin(req)}/setup`));
   } catch (error) {
     next(error);
   }

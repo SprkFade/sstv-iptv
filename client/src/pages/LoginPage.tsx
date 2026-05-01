@@ -12,6 +12,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [plexPin, setPlexPin] = useState<{ id: number; code: string; authUrl: string } | null>(null);
+  const [checkingPlex, setCheckingPlex] = useState(false);
   const from = (location.state as { from?: string } | null)?.from ?? "/";
 
   useEffect(() => {
@@ -19,23 +20,29 @@ export function LoginPage() {
     if (user) navigate(from, { replace: true });
   }, [setupRequired, user, navigate, from]);
 
+  const checkPlexPin = async () => {
+    if (!plexPin || checkingPlex) return;
+    setCheckingPlex(true);
+    try {
+      const result = await api.pollPlexPin(plexPin.id);
+      if (!result.authenticated) return;
+      setError("");
+      await refreshUser();
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Plex login failed");
+    } finally {
+      setCheckingPlex(false);
+    }
+  };
+
   useEffect(() => {
     if (!plexPin) return;
-    const timer = window.setInterval(async () => {
-      try {
-        const result = await api.pollPlexPin(plexPin.id);
-        if (result.authenticated) {
-          window.clearInterval(timer);
-          await refreshUser();
-          navigate(from, { replace: true });
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Plex login failed");
-        window.clearInterval(timer);
-      }
-    }, 2500);
+    const timer = window.setInterval(() => {
+      checkPlexPin().catch(() => undefined);
+    }, 2000);
     return () => window.clearInterval(timer);
-  }, [plexPin, refreshUser, navigate, from]);
+  }, [plexPin, checkingPlex]);
 
   return (
     <div className="mx-auto grid max-w-5xl gap-4 md:grid-cols-[1fr_1fr]">
@@ -93,6 +100,13 @@ export function LoginPage() {
             <a className="flex min-h-11 items-center justify-center rounded-md bg-accent px-4 font-semibold text-white" href={plexPin.authUrl} target="_blank" rel="noreferrer">
               Continue with Plex
             </a>
+            <button
+              className="flex min-h-11 items-center justify-center rounded-md border border-line bg-panel px-4 font-semibold text-ink hover:bg-ink/5 disabled:opacity-60"
+              disabled={checkingPlex}
+              onClick={() => checkPlexPin().catch(() => undefined)}
+            >
+              {checkingPlex ? "Checking Plex..." : "Check Plex login"}
+            </button>
           </div>
         ) : (
           <button

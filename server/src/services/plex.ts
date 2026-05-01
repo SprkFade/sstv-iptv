@@ -14,20 +14,20 @@ function plexHeaders(token?: string) {
   };
 }
 
-export async function createPlexPin() {
+export async function createPlexPin(forwardUrl?: string) {
   const response = await fetch(`${plexBase}/api/v2/pins?strong=true`, {
     method: "POST",
     headers: plexHeaders()
   });
   if (!response.ok) throw new Error("Unable to start Plex login.");
   const pin = (await response.json()) as { id: number; code: string };
-  const authUrl = new URL("https://app.plex.tv/auth");
-  authUrl.hash = new URLSearchParams({
+  const params = new URLSearchParams({
     clientID: setting("plex_client_identifier", config.plexClientIdentifier),
     code: pin.code,
     "context[device][product]": setting("plex_product_name", config.plexProductName)
-  }).toString();
-  return { id: pin.id, code: pin.code, authUrl: authUrl.toString() };
+  });
+  if (forwardUrl) params.set("forwardUrl", forwardUrl);
+  return { id: pin.id, code: pin.code, authUrl: `https://app.plex.tv/auth/#!?${params.toString()}` };
 }
 
 export async function pollPlexPin(id: string) {
