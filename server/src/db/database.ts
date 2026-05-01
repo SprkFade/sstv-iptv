@@ -96,6 +96,19 @@ export function migrate() {
   `);
 
   seedSettings();
+  closeInterruptedRefreshRuns();
+}
+
+function closeInterruptedRefreshRuns() {
+  getDb()
+    .prepare(
+      `UPDATE refresh_runs
+       SET status = 'failed',
+           finished_at = CURRENT_TIMESTAMP,
+           error = COALESCE(NULLIF(error, ''), 'Refresh interrupted by app restart.')
+       WHERE status = 'running'`
+    )
+    .run();
 }
 
 function seedSettings() {
