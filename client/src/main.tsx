@@ -1,7 +1,7 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { Heart, LogOut, Search, Settings, Star, Tv } from "lucide-react";
+import { Heart, LogOut, Moon, Search, Settings, Star, Sun, Tv } from "lucide-react";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ChannelPage } from "./pages/ChannelPage";
@@ -33,6 +33,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   const { user, logout, setupRequired } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    return window.localStorage.getItem("sstv-theme") === "light" ? "light" : "dark";
+  });
   const navUser = user && !setupRequired ? user : null;
   const navItems = [
     { to: "/", label: "Guide", icon: Tv, match: location.pathname === "/" },
@@ -47,10 +50,10 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     document.documentElement.classList.remove("dark", "light");
-    document.documentElement.classList.add("dark");
-    document.documentElement.style.colorScheme = "dark";
-    window.localStorage.setItem("sstv-theme", "dark");
-  }, []);
+    document.documentElement.classList.add(theme);
+    document.documentElement.style.colorScheme = theme;
+    window.localStorage.setItem("sstv-theme", theme);
+  }, [theme]);
 
   if (!navUser) {
     return <div className="min-h-screen bg-mist text-ink">{children}</div>;
@@ -81,6 +84,13 @@ function Shell({ children }: { children: React.ReactNode }) {
             )}
           </nav>
           <div className="mt-auto hidden space-y-2 md:block">
+            <button
+              className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-ink/70 hover:bg-ink/5 hover:text-ink"
+              onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </button>
             <button
               className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-ink/70 hover:bg-ink/5 hover:text-ink"
               onClick={async () => {
