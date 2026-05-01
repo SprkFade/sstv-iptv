@@ -31,6 +31,12 @@ For Portainer stacks, use `docker-compose.portainer.yml` or this image:
 ghcr.io/sprkfade/sstv-iptv:latest
 ```
 
+If GHCR shows the package as private, add a GHCR registry in Portainer with:
+
+- Registry URL: `ghcr.io`
+- Username: `SprkFade`
+- Password/token: a GitHub token with `read:packages`
+
 Create bind-mount directories on the host first:
 
 ```bash
