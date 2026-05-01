@@ -6,10 +6,15 @@ function isMobile() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function VideoPlayer({ channelId, src, title }: { channelId: number; src: string; title: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
+  const [loadingMessage, setLoadingMessage] = useState("Preparing stream...");
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const mobile = typeof navigator !== "undefined" && isMobile();
   const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
@@ -22,6 +27,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     if (!video || mobile) return;
 
     setError("");
+    setLoadingMessage("Preparing stream...");
     setPlaybackBlocked(false);
     video.removeAttribute("src");
     video.load();
@@ -31,9 +37,38 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     let hlsError = false;
     let mediaRecoveries = 0;
     let networkRecoveries = 0;
+    let prepareAbort: AbortController | null = null;
 
     const setPlaybackError = (message: string) => {
       if (!disposed) setError(message);
+    };
+    const waitForPreparedHls = async () => {
+      const started = Date.now();
+      let lastError = "";
+      while (!disposed && Date.now() - started < 60_000) {
+        prepareAbort = new AbortController();
+        try {
+          const response = await fetch(`${transcodeHlsSrc}?prepare=${Date.now()}`, {
+            cache: "no-store",
+            signal: prepareAbort.signal
+          });
+          if (response.ok) {
+            const playlist = await response.text();
+            if (playlist.includes("#EXTINF") && /segment_\d{5}\.ts/.test(playlist)) return;
+            lastError = "FFmpeg is preparing the first video segments.";
+          } else {
+            lastError = `FFmpeg HLS is not ready yet (${response.status}).`;
+          }
+        } catch (err) {
+          if (disposed) return;
+          lastError = err instanceof Error ? err.message : "FFmpeg HLS is not ready yet.";
+        } finally {
+          prepareAbort = null;
+        }
+        setLoadingMessage("Preparing stream...");
+        await wait(1000);
+      }
+      throw new Error(lastError || "Timed out preparing the FFmpeg HLS stream.");
     };
     const requestPlayback = () => {
       if (disposed) return;
@@ -56,59 +91,66 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     video.addEventListener("error", onVideoError);
     video.addEventListener("playing", onPlaying);
 
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = transcodeHlsSrc;
-      video.addEventListener("canplay", requestPlayback, { once: true });
-      return () => {
-        disposed = true;
-        video.removeEventListener("canplay", requestPlayback);
-        video.removeEventListener("error", onVideoError);
-        video.removeEventListener("playing", onPlaying);
-      };
-    }
+    void (async () => {
+      try {
+        await waitForPreparedHls();
+        if (disposed) return;
+        setLoadingMessage("");
 
-    if (!Hls.isSupported()) {
-      setPlaybackError("This browser does not support HLS playback through Media Source Extensions.");
-      return () => {
-        disposed = true;
-        video.removeEventListener("error", onVideoError);
-        video.removeEventListener("playing", onPlaying);
-      };
-    }
+        if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          video.src = transcodeHlsSrc;
+          video.addEventListener("canplay", requestPlayback, { once: true });
+          return;
+        }
 
-    hls = new Hls({
-      enableWorker: true,
-      lowLatencyMode: false,
-      liveSyncDurationCount: 5,
-      liveMaxLatencyDurationCount: 14,
-      maxLiveSyncPlaybackRate: 1.25
-    });
-    hls.on(Hls.Events.ERROR, (_event, data) => {
-      if (!data.fatal) return;
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveries < 5) {
-        networkRecoveries += 1;
-        console.warn("Recovering FFmpeg HLS network error", data);
-        hls?.startLoad(-1);
-        return;
+        if (!Hls.isSupported()) {
+          setPlaybackError("This browser does not support HLS playback through Media Source Extensions.");
+          return;
+        }
+
+        hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          liveSyncDurationCount: 5,
+          liveMaxLatencyDurationCount: 14,
+          maxLiveSyncPlaybackRate: 1.25
+        });
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (!data.fatal) return;
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveries < 5) {
+            networkRecoveries += 1;
+            console.warn("Recovering FFmpeg HLS network error", data);
+            hls?.startLoad(-1);
+            return;
+          }
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 3) {
+            mediaRecoveries += 1;
+            console.warn("Recovering FFmpeg HLS media error", data);
+            hls?.recoverMediaError();
+            return;
+          }
+          hlsError = true;
+          console.warn("FFmpeg HLS playback error", data);
+          const code = data.response?.code ? ` HTTP ${data.response.code}` : "";
+          const reason = [data.type, data.details].filter(Boolean).join(": ");
+          setPlaybackError(`FFmpeg HLS failed${reason ? ` (${reason}${code})` : code ? ` (${code.trim()})` : ""}.`);
+        });
+        hls.on(Hls.Events.MEDIA_ATTACHED, () => hls?.loadSource(transcodeHlsSrc));
+        hls.on(Hls.Events.MANIFEST_PARSED, requestPlayback);
+        hls.attachMedia(video);
+      } catch (err) {
+        if (!disposed) {
+          setLoadingMessage("");
+          setPlaybackError(err instanceof Error ? err.message : "Unable to prepare the FFmpeg HLS stream.");
+        }
       }
-      if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 3) {
-        mediaRecoveries += 1;
-        console.warn("Recovering FFmpeg HLS media error", data);
-        hls?.recoverMediaError();
-        return;
-      }
-      hlsError = true;
-      console.warn("FFmpeg HLS playback error", data);
-      const code = data.response?.code ? ` HTTP ${data.response.code}` : "";
-      const reason = [data.type, data.details].filter(Boolean).join(": ");
-      setPlaybackError(`FFmpeg HLS failed${reason ? ` (${reason}${code})` : code ? ` (${code.trim()})` : ""}.`);
-    });
-    hls.on(Hls.Events.MEDIA_ATTACHED, () => hls?.loadSource(transcodeHlsSrc));
-    hls.on(Hls.Events.MANIFEST_PARSED, requestPlayback);
-    hls.attachMedia(video);
+    })();
+
     return () => {
       disposed = true;
+      prepareAbort?.abort();
       hls?.destroy();
+      video.removeEventListener("canplay", requestPlayback);
       video.removeEventListener("error", onVideoError);
       video.removeEventListener("playing", onPlaying);
     };
@@ -139,6 +181,14 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           playsInline
           title={title}
         />
+        {loadingMessage && !error && (
+          <div className="absolute inset-0 grid place-items-center bg-black text-white">
+            <div className="grid justify-items-center gap-3">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+              <span className="text-sm font-semibold">{loadingMessage}</span>
+            </div>
+          </div>
+        )}
         {playbackBlocked && !error && (
           <button
             className="absolute inset-0 grid place-items-center bg-black/35 text-white"

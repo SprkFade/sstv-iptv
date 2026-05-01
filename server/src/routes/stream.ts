@@ -47,6 +47,36 @@ async function waitForFile(filePath: string, timeoutMs: number) {
   throw new Error(`Timed out waiting for ${path.basename(filePath)}`);
 }
 
+async function waitForReadyPlaylist(dir: string, timeoutMs: number) {
+  const started = Date.now();
+  const playlistPath = path.join(dir, "index.m3u8");
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const playlist = await fs.promises.readFile(playlistPath, "utf8");
+      const segments = playlist
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => /^segment_\d{5}\.ts$/.test(line));
+
+      if (segments.length >= 3) {
+        const readySegments = await Promise.all(segments.slice(-3).map(async (segment) => {
+          try {
+            const stat = await fs.promises.stat(path.join(dir, segment));
+            return stat.size > 0;
+          } catch {
+            return false;
+          }
+        }));
+        if (readySegments.every(Boolean)) return;
+      }
+    } catch {
+      // FFmpeg may not have emitted the first live playlist yet.
+    }
+    await wait(250);
+  }
+  throw new Error("Timed out waiting for FFmpeg HLS playlist to become ready");
+}
+
 function stopHlsSession(channelId: number) {
   const session = hlsSessions.get(channelId);
   if (!session) return;
@@ -271,7 +301,11 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
     session.lastAccess = Date.now();
 
     const filePath = path.join(session.dir, file);
-    await waitForFile(filePath, file === "index.m3u8" ? 15_000 : 8_000);
+    if (file === "index.m3u8") {
+      await waitForReadyPlaylist(session.dir, 30_000);
+    } else {
+      await waitForFile(filePath, 10_000);
+    }
 
     res.setHeader("cache-control", "no-store");
     res.setHeader("x-accel-buffering", "no");
