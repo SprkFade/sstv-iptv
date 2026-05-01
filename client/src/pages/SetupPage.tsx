@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, KeyRound, Link as LinkIcon, Server, Shield } from "lucide-react";
+import { Check, ChevronDown, KeyRound, Link as LinkIcon, Server, Shield } from "lucide-react";
 import { api, type PlexServer } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -22,6 +22,7 @@ export function SetupPage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [checkingPlex, setCheckingPlex] = useState(false);
+  const checkingPlexRef = useRef(false);
 
   useEffect(() => {
     if (!loading && !setupRequired) navigate("/", { replace: true });
@@ -38,9 +39,10 @@ export function SetupPage() {
       .catch(() => undefined);
   }, []);
 
-  const checkPlexPin = async () => {
-    if (!plexPin || plexToken || checkingPlex) return;
-    setCheckingPlex(true);
+  const checkPlexPin = async (manual = false) => {
+    if (!plexPin || plexToken || checkingPlexRef.current) return;
+    checkingPlexRef.current = true;
+    if (manual) setCheckingPlex(true);
     try {
       const result = await api.pollSetupPlexPin(plexPin.id);
       if (!result.authenticated) return;
@@ -54,7 +56,8 @@ export function SetupPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Plex setup failed");
     } finally {
-      setCheckingPlex(false);
+      checkingPlexRef.current = false;
+      if (manual) setCheckingPlex(false);
     }
   };
 
@@ -64,7 +67,7 @@ export function SetupPage() {
       checkPlexPin().catch(() => undefined);
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [plexPin, plexToken, checkingPlex]);
+  }, [plexPin, plexToken]);
 
   const selectedServerName = useMemo(
     () => servers.find((server) => server.clientIdentifier === selectedServer)?.name ?? "",
@@ -179,11 +182,12 @@ export function SetupPage() {
                 <a className="flex min-h-11 items-center justify-center rounded-md bg-accent px-4 font-semibold text-white" href={plexPin.authUrl} target="_blank" rel="noreferrer">
                   Continue with Plex
                 </a>
+                <p className="text-sm text-ink/60">After approving Plex, close that tab and return here. This page will keep checking in the background.</p>
                 <button
                   className="flex min-h-11 items-center justify-center rounded-md border border-line bg-panel px-4 font-semibold text-ink hover:bg-ink/5 disabled:opacity-60"
                   type="button"
                   disabled={checkingPlex}
-                  onClick={() => checkPlexPin().catch(() => undefined)}
+                  onClick={() => checkPlexPin(true).catch(() => undefined)}
                 >
                   {checkingPlex ? "Checking Plex..." : "Check Plex connection"}
                 </button>
@@ -197,13 +201,16 @@ export function SetupPage() {
                 </div>
                 <label className="grid gap-1 text-sm font-medium">
                   Plex server
-                  <select className="min-h-11 rounded-md border border-line px-3" value={selectedServer} onChange={(event) => setSelectedServer(event.target.value)}>
-                    {servers.map((server) => (
-                      <option key={server.clientIdentifier} value={server.clientIdentifier}>
-                        {server.name}{server.owned ? " (owned)" : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select className="min-h-11 w-full appearance-none rounded-md border border-line px-3 pr-12" value={selectedServer} onChange={(event) => setSelectedServer(event.target.value)}>
+                      {servers.map((server) => (
+                        <option key={server.clientIdentifier} value={server.clientIdentifier}>
+                          {server.name}{server.owned ? " (owned)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-ink/50" size={18} />
+                  </div>
                 </label>
               </div>
             )}

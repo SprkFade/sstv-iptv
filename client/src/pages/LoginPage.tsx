@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { KeyRound, Shield, Tv } from "lucide-react";
 import { api } from "../api/client";
@@ -13,6 +13,7 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [plexPin, setPlexPin] = useState<{ id: number; code: string; authUrl: string } | null>(null);
   const [checkingPlex, setCheckingPlex] = useState(false);
+  const checkingPlexRef = useRef(false);
   const from = (location.state as { from?: string } | null)?.from ?? "/";
 
   useEffect(() => {
@@ -20,9 +21,10 @@ export function LoginPage() {
     if (user) navigate(from, { replace: true });
   }, [setupRequired, user, navigate, from]);
 
-  const checkPlexPin = async () => {
-    if (!plexPin || checkingPlex) return;
-    setCheckingPlex(true);
+  const checkPlexPin = async (manual = false) => {
+    if (!plexPin || checkingPlexRef.current) return;
+    checkingPlexRef.current = true;
+    if (manual) setCheckingPlex(true);
     try {
       const result = await api.pollPlexPin(plexPin.id);
       if (!result.authenticated) return;
@@ -32,7 +34,8 @@ export function LoginPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Plex login failed");
     } finally {
-      setCheckingPlex(false);
+      checkingPlexRef.current = false;
+      if (manual) setCheckingPlex(false);
     }
   };
 
@@ -42,7 +45,7 @@ export function LoginPage() {
       checkPlexPin().catch(() => undefined);
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [plexPin, checkingPlex]);
+  }, [plexPin]);
 
   return (
     <div className="mx-auto grid max-w-5xl gap-4 md:grid-cols-[1fr_1fr]">
@@ -100,10 +103,11 @@ export function LoginPage() {
             <a className="flex min-h-11 items-center justify-center rounded-md bg-accent px-4 font-semibold text-white" href={plexPin.authUrl} target="_blank" rel="noreferrer">
               Continue with Plex
             </a>
+            <p className="text-sm text-ink/60">After approving Plex, close that tab and return here. This page will keep checking in the background.</p>
             <button
               className="flex min-h-11 items-center justify-center rounded-md border border-line bg-panel px-4 font-semibold text-ink hover:bg-ink/5 disabled:opacity-60"
               disabled={checkingPlex}
-              onClick={() => checkPlexPin().catch(() => undefined)}
+              onClick={() => checkPlexPin(true).catch(() => undefined)}
             >
               {checkingPlex ? "Checking Plex..." : "Check Plex login"}
             </button>

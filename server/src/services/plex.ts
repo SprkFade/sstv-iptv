@@ -14,7 +14,7 @@ function plexHeaders(token?: string) {
   };
 }
 
-export async function createPlexPin(forwardUrl?: string) {
+export async function createPlexPin() {
   const response = await fetch(`${plexBase}/api/v2/pins?strong=true`, {
     method: "POST",
     headers: plexHeaders()
@@ -26,7 +26,6 @@ export async function createPlexPin(forwardUrl?: string) {
     code: pin.code,
     "context[device][product]": setting("plex_product_name", config.plexProductName)
   });
-  if (forwardUrl) params.set("forwardUrl", forwardUrl);
   return { id: pin.id, code: pin.code, authUrl: `https://app.plex.tv/auth/#!?${params.toString()}` };
 }
 

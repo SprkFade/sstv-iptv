@@ -5,7 +5,6 @@ import { getDb, isSetupComplete } from "../db/database.js";
 import { clearSession, createSession, requireAuth } from "../auth/session.js";
 import type { AuthedRequest } from "../types/app.js";
 import { createPlexPin, getPlexUser, pollPlexPin, verifyPlexServerAccess } from "../services/plex.js";
-import { requestOrigin } from "../utils/requestUrl.js";
 
 export const authRouter = Router();
 
@@ -38,10 +37,10 @@ authRouter.get("/me", (req: AuthedRequest, res) => {
   res.json({ user: req.user ?? null, setupRequired: !isSetupComplete() });
 });
 
-authRouter.post("/plex/pin", async (req, res, next) => {
+authRouter.post("/plex/pin", async (_req, res, next) => {
   try {
     if (!isSetupComplete()) return res.status(409).json({ error: "Setup is required before Plex user login." });
-    res.json(await createPlexPin(`${requestOrigin(req)}/login`));
+    res.json(await createPlexPin());
   } catch (error) {
     next(error);
   }
