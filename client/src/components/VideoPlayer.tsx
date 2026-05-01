@@ -10,6 +10,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const mobile = typeof navigator !== "undefined" && isMobile();
   const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
   const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
@@ -21,6 +22,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     if (!video || mobile) return;
 
     setError("");
+    setPlaybackBlocked(false);
     video.removeAttribute("src");
     video.load();
 
@@ -33,16 +35,35 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     const setPlaybackError = (message: string) => {
       if (!disposed) setError(message);
     };
+    const requestPlayback = () => {
+      if (disposed) return;
+      video.muted = true;
+      const playRequest = video.play();
+      if (playRequest) {
+        playRequest
+          .then(() => {
+            if (!disposed) setPlaybackBlocked(false);
+          })
+          .catch(() => {
+            if (!disposed) setPlaybackBlocked(true);
+          });
+      }
+    };
     const onVideoError = () => {
       if (!hlsError) setPlaybackError("The browser could not decode the FFmpeg HLS stream.");
     };
+    const onPlaying = () => setPlaybackBlocked(false);
     video.addEventListener("error", onVideoError);
+    video.addEventListener("playing", onPlaying);
 
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = transcodeHlsSrc;
+      video.addEventListener("canplay", requestPlayback, { once: true });
       return () => {
         disposed = true;
+        video.removeEventListener("canplay", requestPlayback);
         video.removeEventListener("error", onVideoError);
+        video.removeEventListener("playing", onPlaying);
       };
     }
 
@@ -51,6 +72,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
       return () => {
         disposed = true;
         video.removeEventListener("error", onVideoError);
+        video.removeEventListener("playing", onPlaying);
       };
     }
 
@@ -81,12 +103,14 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
       const reason = [data.type, data.details].filter(Boolean).join(": ");
       setPlaybackError(`FFmpeg HLS failed${reason ? ` (${reason}${code})` : code ? ` (${code.trim()})` : ""}.`);
     });
-    hls.loadSource(transcodeHlsSrc);
+    hls.on(Hls.Events.MEDIA_ATTACHED, () => hls?.loadSource(transcodeHlsSrc));
+    hls.on(Hls.Events.MANIFEST_PARSED, requestPlayback);
     hls.attachMedia(video);
     return () => {
       disposed = true;
       hls?.destroy();
       video.removeEventListener("error", onVideoError);
+      video.removeEventListener("playing", onPlaying);
     };
   }, [mobile, retryKey, transcodeHlsSrc]);
 
@@ -105,13 +129,32 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
 
   return (
     <div className="overflow-hidden rounded-md border border-line bg-black">
-      <video
-        ref={videoRef}
-        className="aspect-video w-full bg-black"
-        controls
-        playsInline
-        title={title}
-      />
+      <div className="relative">
+        <video
+          ref={videoRef}
+          className="aspect-video w-full bg-black"
+          autoPlay
+          controls
+          muted
+          playsInline
+          title={title}
+        />
+        {playbackBlocked && !error && (
+          <button
+            className="absolute inset-0 grid place-items-center bg-black/35 text-white"
+            onClick={() => {
+              const video = videoRef.current;
+              if (!video) return;
+              video.muted = true;
+              void video.play().then(() => setPlaybackBlocked(false));
+            }}
+          >
+            <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-white/15 backdrop-blur">
+              <Play size={30} fill="currentColor" />
+            </span>
+          </button>
+        )}
+      </div>
       {error && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-black p-3 text-sm text-white">
           <span>{error}</span>
