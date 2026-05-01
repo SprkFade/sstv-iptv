@@ -144,7 +144,7 @@ export function HomePage() {
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
           <div>
             <p className="text-sm font-semibold text-ink/55">{formatTime(guideStart.toISOString())} - {formatTime(visibleGuideEnd)}</p>
-            <h1 className="text-2xl font-bold">Guide</h1>
+            <h1 className="text-2xl font-bold">TV guide</h1>
             <p className="text-sm text-ink/60">{airing.length} of {total} channels loaded</p>
           </div>
           <div className="relative">
@@ -204,8 +204,8 @@ export function HomePage() {
         <div className="overflow-x-auto">
           <div className="grid gap-0" style={{ minWidth: `${96 + TIMELINE_WIDTH}px` }}>
             <div className="sticky top-0 z-10 grid grid-cols-[6rem_minmax(0,1fr)] border-b border-line bg-panel/95 backdrop-blur">
-              <div className="sticky left-0 z-20 grid place-items-center border-r border-line bg-panel px-2 py-3 text-xs font-semibold text-ink/55">
-                Channels
+              <div className="sticky left-0 z-20 grid place-items-center border-r border-line bg-panel px-2 py-3 text-ink/45">
+                <Filter size={18} />
               </div>
               <div className="relative h-11" style={{ width: `${TIMELINE_WIDTH}px` }}>
                 {timeline.map((slot) => (
@@ -226,7 +226,7 @@ export function HomePage() {
               <div className="p-4 text-sm text-ink/60">No channels match this view.</div>
             )}
             {airing.map((item) => (
-              <article key={item.channel_id} className="grid min-h-[76px] grid-cols-[6rem_minmax(0,1fr)] border-b border-line/80 last:border-b-0">
+              <article key={item.channel_id} className="grid min-h-[76px] grid-cols-[6rem_minmax(0,1fr)] border-b border-line last:border-b-0">
                 <Link
                   to={`/channel/${item.channel_id}`}
                   className="sticky left-0 z-10 grid place-items-center border-r border-line bg-panel px-2 py-2"
@@ -237,7 +237,7 @@ export function HomePage() {
                     <span className="text-[0.68rem] font-bold tabular-nums text-ink/55">{item.channel_number ?? item.sort_order + 1}</span>
                   </div>
                 </Link>
-                <div className="relative bg-mist/50 p-1" style={{ width: `${TIMELINE_WIDTH}px` }}>
+                <div className="relative bg-mist/60 p-1" style={{ width: `${TIMELINE_WIDTH}px` }}>
                   {timeline.slice(0, -1).map((slot) => (
                     <div
                       key={`line-${item.channel_id}-${slot.offset}`}
@@ -255,7 +255,7 @@ export function HomePage() {
                         className={`group/program absolute top-1 min-w-0 overflow-hidden rounded-[3px] border px-3 py-2 transition ${
                           isCurrent
                             ? "border-accent bg-panel text-ink shadow-sm hover:border-accent"
-                            : "border-line bg-panel/85 text-ink hover:border-accent hover:bg-panel"
+                            : "border-line bg-panel/80 text-ink hover:border-accent hover:bg-panel"
                         }`}
                         style={{ left: `${style.left}px`, width: `${style.width - 4}px`, height: "68px" }}
                         title={`${program.title} ${timeRange(program.start_time, program.end_time)}`}
