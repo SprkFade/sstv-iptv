@@ -42,7 +42,9 @@ function Shell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-20 border-b border-line bg-mist/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3">
           <Link to="/" className="flex items-center gap-2 text-base font-bold">
-            <span className="grid size-9 place-items-center rounded-md bg-accent text-white"><Tv size={19} /></span>
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-white">
+              <Tv size={19} strokeWidth={2.2} className="block translate-y-px" />
+            </span>
             SSTV IPTV
           </Link>
           <div className="flex items-center gap-2">

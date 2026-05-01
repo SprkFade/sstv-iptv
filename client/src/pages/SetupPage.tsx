@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, KeyRound, Link as LinkIcon, Server, Shield, Tv } from "lucide-react";
+import { Check, KeyRound, Link as LinkIcon, Server, Shield } from "lucide-react";
 import { api, type PlexServer } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -61,12 +61,9 @@ export function SetupPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <section className="rounded-md border border-line bg-panel p-5 shadow-soft">
-        <div className="mb-5 flex items-center gap-3">
-          <span className="grid size-11 place-items-center rounded-md bg-accent text-white"><Tv /></span>
-          <div>
-            <h1 className="text-2xl font-bold">Launch setup</h1>
-            <p className="text-sm text-ink/60">Create the admin account, connect guide data, and choose your Plex server.</p>
-          </div>
+        <div className="mb-5">
+          <h1 className="text-2xl font-bold">Launch setup</h1>
+          <p className="text-sm text-ink/60">Create the admin account, connect guide data, and choose your Plex server.</p>
         </div>
 
         {error && <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
