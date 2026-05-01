@@ -46,6 +46,7 @@ mkdir -p data cache
 ```
 
 Then deploy with the same `.env` values from `.env.example`.
+The Portainer compose file includes an inline `environment` block, so you can paste it directly into a stack and set variables in Portainer.
 
 On Linux, if Docker-created files are owned by root:
 
