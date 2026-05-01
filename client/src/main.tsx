@@ -16,9 +16,17 @@ function Protected({ children, admin = false }: { children: React.ReactNode; adm
   const location = useLocation();
   if (loading) return <div className="grid min-h-screen place-items-center bg-mist text-sm text-ink/60">Loading SSTV IPTV...</div>;
   if (setupRequired) return <Navigate to="/setup" replace />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user) return <Navigate to="/" replace state={{ from: location.pathname }} />;
   if (admin && user.role !== "admin") return <Navigate to="/" replace />;
   return children;
+}
+
+function RootPage() {
+  const { user, setupRequired, loading } = useAuth();
+  if (loading) return <div className="grid min-h-screen place-items-center bg-mist text-sm text-ink/60">Loading SSTV IPTV...</div>;
+  if (setupRequired) return <Navigate to="/setup" replace />;
+  if (!user) return <LoginPage />;
+  return <HomePage />;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -60,7 +68,7 @@ function Shell({ children }: { children: React.ReactNode }) {
               className="grid size-10 place-items-center rounded-md border border-line bg-panel text-ink hover:bg-ink/5"
               onClick={async () => {
                 await logout();
-                navigate("/login");
+                navigate("/");
               }}
               title="Log out"
             >
@@ -103,7 +111,7 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/setup" element={<SetupPage />} />
-            <Route path="/" element={<Protected><HomePage /></Protected>} />
+            <Route path="/" element={<RootPage />} />
             <Route path="/channel/:id" element={<Protected><ChannelPage /></Protected>} />
             <Route path="/favorites" element={<Protected><FavoritesPage /></Protected>} />
             <Route path="/admin" element={<Protected admin><AdminPage /></Protected>} />
