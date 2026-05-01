@@ -54,6 +54,9 @@ export interface RefreshProgress {
   detail: string;
   channelCount: number;
   programCount: number;
+  totalProgramCount: number;
+  savedChannelCount: number;
+  savedProgramCount: number;
   matchedCount: number;
   startedAt: string | null;
   updatedAt: string | null;

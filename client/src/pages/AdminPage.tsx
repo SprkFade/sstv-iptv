@@ -4,6 +4,13 @@ import { api, type RefreshProgress } from "../api/client";
 
 type Settings = Awaited<ReturnType<typeof api.settings>>;
 
+function formatDuration(seconds: number) {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}m ${remainder}s`;
+}
+
 export function AdminPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [runs, setRuns] = useState<Array<Record<string, string | number | null>>>([]);
@@ -13,6 +20,7 @@ export function AdminPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [xcPassword, setXcPassword] = useState("");
   const [refreshStatus, setRefreshStatus] = useState<RefreshProgress | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   const load = async () => {
     const [settingsResult, runResult, userResult, statusResult] = await Promise.allSettled([
@@ -36,10 +44,13 @@ export function AdminPage() {
   };
 
   const loadRefreshState = async () => {
-    const [statusResponse, runResponse] = await Promise.all([api.refreshStatus(), api.refreshRuns()]);
+    const statusResponse = await api.refreshStatus();
     setRefreshStatus(statusResponse);
     setRefreshing(statusResponse.active);
-    setRuns(runResponse.runs);
+    if (!statusResponse.active) {
+      const runResponse = await api.refreshRuns();
+      setRuns(runResponse.runs);
+    }
   };
 
   useEffect(() => {
@@ -53,6 +64,18 @@ export function AdminPage() {
     }, 2500);
     return () => window.clearInterval(timer);
   }, [refreshing, refreshStatus?.active]);
+
+  useEffect(() => {
+    if (!refreshStatus?.active) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [refreshStatus?.active]);
+
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => setMessage(""), 4500);
+    return () => window.clearTimeout(timer);
+  }, [message]);
 
   if (!settings) {
     return (
@@ -154,10 +177,29 @@ export function AdminPage() {
 
       {refreshStatus && (
         <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
+          {(() => {
+            const updatedAgo = refreshStatus.updatedAt ? Math.max(0, Math.floor((now - new Date(refreshStatus.updatedAt).getTime()) / 1000)) : null;
+            const elapsed = refreshStatus.startedAt ? Math.max(0, Math.floor((now - new Date(refreshStatus.startedAt).getTime()) / 1000)) : null;
+            const saving = refreshStatus.active && refreshStatus.stage === "Saving guide data";
+            const channelValue = saving && refreshStatus.savedChannelCount < refreshStatus.channelCount
+              ? `${refreshStatus.savedChannelCount}/${refreshStatus.channelCount}`
+              : String(refreshStatus.channelCount);
+            const programTotal = refreshStatus.totalProgramCount || refreshStatus.programCount;
+            const programValue = saving && refreshStatus.savedProgramCount < programTotal
+              ? `${refreshStatus.savedProgramCount}/${programTotal}`
+              : String(refreshStatus.programCount);
+            return (
+              <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-bold">Refresh status</h2>
               <p className="text-sm text-ink/60">{refreshStatus.detail || "No refresh is running."}</p>
+              {refreshStatus.active && (
+                <p className="mt-1 text-xs text-ink/50">
+                  {elapsed !== null ? `Elapsed ${formatDuration(elapsed)}` : "Refresh running"}
+                  {updatedAgo !== null ? `, status updated ${formatDuration(updatedAgo)} ago` : ""}
+                </p>
+              )}
             </div>
             <span className={`rounded-md border px-3 py-1 text-sm font-semibold ${refreshStatus.active ? "border-accent text-accent" : "border-line text-ink/70"}`}>
               {refreshStatus.stage}
@@ -166,20 +208,31 @@ export function AdminPage() {
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-ink/15">
             <div className={`h-full rounded-full bg-accent ${refreshStatus.active ? "w-2/3 animate-pulse" : "w-full"}`} />
           </div>
+          {refreshStatus.active && updatedAgo !== null && updatedAgo > 30 && (
+            <p className="mt-3 rounded-md border border-gold/40 bg-gold/10 p-3 text-sm text-ink/70">
+              This step is still running. Large XMLTV files can spend a while parsing or saving before the next count update appears.
+            </p>
+          )}
+          {refreshStatus.error && (
+            <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{refreshStatus.error}</p>
+          )}
           <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
             <div>
               <div className="text-ink/60">Channels</div>
-              <div className="font-bold">{refreshStatus.channelCount}</div>
+              <div className="font-bold">{channelValue}</div>
             </div>
             <div>
               <div className="text-ink/60">Programs</div>
-              <div className="font-bold">{refreshStatus.programCount}</div>
+              <div className="font-bold">{programValue}</div>
             </div>
             <div>
               <div className="text-ink/60">Matched</div>
               <div className="font-bold">{refreshStatus.matchedCount}</div>
             </div>
           </div>
+              </>
+            );
+          })()}
         </section>
       )}
 

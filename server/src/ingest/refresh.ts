@@ -10,6 +10,9 @@ export interface RefreshProgress {
   detail: string;
   channelCount: number;
   programCount: number;
+  totalProgramCount: number;
+  savedChannelCount: number;
+  savedProgramCount: number;
   matchedCount: number;
   startedAt: string | null;
   updatedAt: string | null;
@@ -23,6 +26,9 @@ let progress: RefreshProgress = {
   detail: "",
   channelCount: 0,
   programCount: 0,
+  totalProgramCount: 0,
+  savedChannelCount: 0,
+  savedProgramCount: 0,
   matchedCount: 0,
   startedAt: null,
   updatedAt: null,
@@ -67,6 +73,10 @@ async function fetchText(url: string, label: string) {
   return response.text();
 }
 
+function yieldToEventLoop() {
+  return new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 function currentXcCredentials(overrides?: Partial<XcCredentials>) {
   return {
     baseUrl: overrides?.baseUrl ?? setting("xc_base_url"),
@@ -88,6 +98,9 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
     detail: "Checking source configuration.",
     channelCount: 0,
     programCount: 0,
+    totalProgramCount: 0,
+    savedChannelCount: 0,
+    savedProgramCount: 0,
     matchedCount: 0,
     startedAt: new Date().toISOString(),
     error: ""
@@ -123,6 +136,8 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
     setProgress({
       stage: "Matching channels",
       detail: `Matching ${sourceChannels.length} channels with ${xmltv.channels.length} XMLTV entries.`,
+      channelCount: sourceChannels.length,
+      totalProgramCount: xmltv.programs.length,
       programCount: xmltv.programs.length
     });
     const { matches, matchedCount } = matchChannels(sourceChannels, xmltv.channels);
@@ -130,11 +145,16 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
       stage: "Saving guide data",
       detail: `Saving channels and ${xmltv.programs.length} program entries.`,
       channelCount: sourceChannels.length,
+      totalProgramCount: xmltv.programs.length,
       programCount: xmltv.programs.length,
       matchedCount
     });
 
-    const applyRefresh = db.transaction(() => {
+    const applyRefresh = async () => {
+      let savedChannelCount = 0;
+      let savedProgramCount = 0;
+      db.prepare("BEGIN IMMEDIATE").run();
+      try {
       db.prepare("UPDATE channels SET enabled = 0, updated_at = CURRENT_TIMESTAMP").run();
       db.prepare("DELETE FROM programs").run();
 
@@ -163,7 +183,8 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
       );
 
       const xmltvToChannelId = new Map<string, number>();
-      sourceChannels.forEach((channel, index) => {
+      for (let index = 0; index < sourceChannels.length; index += 1) {
+        const channel = sourceChannels[index];
         const xmltvMatch = matches.get(index);
         const existing = findChannel.get(channel.tvgId, channel.streamUrl, channel.tvgId) as
           | { id: number }
@@ -184,7 +205,15 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
           : Number(insertChannel.run(...values).lastInsertRowid);
 
         if (xmltvMatch?.id) xmltvToChannelId.set(xmltvMatch.id, channelId);
-      });
+        savedChannelCount += 1;
+        if (savedChannelCount % 250 === 0 || savedChannelCount === sourceChannels.length) {
+          setProgress({
+            detail: `Saving channels ${savedChannelCount}/${sourceChannels.length}.`,
+            savedChannelCount
+          });
+          await yieldToEventLoop();
+        }
+      }
 
       for (const program of xmltv.programs) {
         const channelId = xmltvToChannelId.get(program.channelXmltvId);
@@ -198,21 +227,44 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
           program.startTime,
           program.endTime
         );
+        savedProgramCount += 1;
+        if (savedProgramCount % 1000 === 0) {
+          setProgress({
+            detail: `Saving programs ${savedProgramCount}/${xmltv.programs.length}.`,
+            savedProgramCount,
+            programCount: savedProgramCount
+          });
+          await yieldToEventLoop();
+        }
       }
+      setProgress({
+        detail: `Saving programs ${savedProgramCount}/${xmltv.programs.length}.`,
+        savedChannelCount,
+        savedProgramCount,
+        programCount: savedProgramCount
+      });
+      db.prepare("COMMIT").run();
 
       return {
         channelCount: sourceChannels.length,
-        programCount: db.prepare("SELECT COUNT(*) AS count FROM programs").get() as { count: number },
+        programCount: { count: savedProgramCount },
         matchedCount
       };
-    });
+      } catch (error) {
+        db.prepare("ROLLBACK").run();
+        throw error;
+      }
+    };
 
-    const counts = applyRefresh();
+    const counts = await applyRefresh();
     setProgress({
       stage: "Finalizing refresh",
       detail: "Writing refresh results.",
       channelCount: counts.channelCount,
       programCount: counts.programCount.count,
+      totalProgramCount: xmltv.programs.length,
+      savedChannelCount: counts.channelCount,
+      savedProgramCount: counts.programCount.count,
       matchedCount: counts.matchedCount
     });
     db.prepare(
@@ -228,6 +280,9 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
       detail: `${counts.channelCount} channels, ${counts.programCount.count} programs, ${counts.matchedCount} matched.`,
       channelCount: counts.channelCount,
       programCount: counts.programCount.count,
+      totalProgramCount: xmltv.programs.length,
+      savedChannelCount: counts.channelCount,
+      savedProgramCount: counts.programCount.count,
       matchedCount: counts.matchedCount
     });
     return { id: runId, status: "success", ...counts, programCount: counts.programCount.count };
