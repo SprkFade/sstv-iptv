@@ -7,20 +7,9 @@ import { FavoriteButton } from "../components/FavoriteButton";
 import { formatTime, progress } from "../utils/time";
 
 const PAGE_SIZE = 25;
-const GUIDE_HOURS = 12;
-const SLOT_MINUTES = 30;
-const SLOT_WIDTH = 150;
-const TIMELINE_WIDTH = (GUIDE_HOURS * 60 / SLOT_MINUTES) * SLOT_WIDTH;
 
 function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60 * 1000);
-}
-
-function floorToSlot(value: string) {
-  const date = new Date(value);
-  date.setSeconds(0, 0);
-  date.setMinutes(Math.floor(date.getMinutes() / SLOT_MINUTES) * SLOT_MINUTES);
-  return date;
 }
 
 function timeRange(start?: string | null, end?: string | null) {
@@ -28,13 +17,14 @@ function timeRange(start?: string | null, end?: string | null) {
   return `${formatTime(start)} - ${formatTime(end)}`;
 }
 
-function programPosition(start: string, end: string, windowStart: number) {
-  const windowEnd = windowStart + GUIDE_HOURS * 60 * 60 * 1000;
-  const clippedStart = Math.max(new Date(start).getTime(), windowStart);
-  const clippedEnd = Math.min(new Date(end).getTime(), windowEnd);
-  const left = ((clippedStart - windowStart) / (SLOT_MINUTES * 60 * 1000)) * SLOT_WIDTH;
-  const width = Math.max(72, ((clippedEnd - clippedStart) / (SLOT_MINUTES * 60 * 1000)) * SLOT_WIDTH);
-  return { left, width };
+function minutesRemaining(end?: string | null) {
+  if (!end) return "";
+  const minutes = Math.max(0, Math.ceil((new Date(end).getTime() - Date.now()) / 60000));
+  if (minutes <= 0) return "ending now";
+  if (minutes < 60) return `${minutes} min left`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours}h ${remainder}m left` : `${hours}h left`;
 }
 
 export function HomePage() {
@@ -52,15 +42,10 @@ export function HomePage() {
   const [guideAt, setGuideAt] = useState(() => new Date().toISOString());
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [params] = useSearchParams();
-  const guideStart = useMemo(() => floorToSlot(guideAt), [guideAt]);
-  const guideStartMs = guideStart.getTime();
-  const visibleGuideEnd = useMemo(() => addMinutes(guideStart, GUIDE_HOURS * 60).toISOString(), [guideStart]);
   const timeline = useMemo(() => {
-    return Array.from({ length: GUIDE_HOURS * 2 + 1 }, (_, index) => ({
-      time: formatTime(addMinutes(guideStart, index * SLOT_MINUTES).toISOString()),
-      offset: index * SLOT_WIDTH
-    }));
-  }, [guideStart]);
+    const base = new Date(guideAt);
+    return [0, 30, 60, 90].map((minutes) => formatTime(addMinutes(base, minutes).toISOString()));
+  }, [guideAt]);
 
   const guideParams = useCallback((offset: number) => {
     const searchParams = new URLSearchParams({
@@ -140,18 +125,18 @@ export function HomePage() {
 
   return (
     <div className="grid gap-4">
-      <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
+      <section className="min-w-0 overflow-hidden rounded-md border border-white/10 bg-[#111318] p-4 text-white shadow-soft">
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
           <div>
-            <p className="text-sm font-semibold text-ink/55">{formatTime(guideStart.toISOString())} - {formatTime(visibleGuideEnd)}</p>
-            <h1 className="text-2xl font-bold">TV guide</h1>
-            <p className="text-sm text-ink/60">{airing.length} of {total} channels loaded</p>
+            <p className="text-sm font-semibold text-white/55">{formatTime(guideAt)}</p>
+            <h1 className="text-3xl font-bold">TV guide</h1>
+            <p className="text-sm text-white/55">{airing.length} of {total} channels loaded</p>
           </div>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-3 text-ink/45" size={18} />
+            <Search className="pointer-events-none absolute left-3 top-3 text-white/45" size={18} />
             <input
               id="guide-search"
-              className="min-h-11 w-full rounded-md border border-line pl-10 pr-3 md:w-80"
+              className="min-h-11 w-full rounded-md border border-white/15 bg-white/10 pl-10 pr-3 text-white placeholder:text-white/40 md:w-80"
               placeholder="Search channels and programs"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -160,14 +145,14 @@ export function HomePage() {
         </div>
         <div className="mt-4 w-full max-w-full overflow-x-auto pb-1 scrollbar-none">
           <div className="flex min-w-max gap-2">
-          <button className={`flex min-h-10 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${!activeGroup ? "border-accent bg-accent text-white" : "border-line bg-panel text-ink"}`} onClick={() => setActiveGroup("")}>
+          <button className={`flex min-h-10 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${!activeGroup ? "border-rose-500 bg-rose-600 text-white" : "border-white/15 bg-white/10 text-white/75"}`} onClick={() => setActiveGroup("")}>
             <Filter size={16} /> All
           </button>
-          <button className={`flex min-h-10 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${favoritesOnly ? "border-berry bg-berry text-white" : "border-line bg-panel text-ink"}`} onClick={() => setFavoritesOnly(!favoritesOnly)}>
+          <button className={`flex min-h-10 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${favoritesOnly ? "border-rose-500 bg-rose-600 text-white" : "border-white/15 bg-white/10 text-white/75"}`} onClick={() => setFavoritesOnly(!favoritesOnly)}>
             <Star size={16} /> Favorites
           </button>
           {groups.map((group) => (
-            <button key={group} className={`min-h-10 shrink-0 rounded-md border px-3 text-sm font-medium ${activeGroup === group ? "border-accent bg-accent text-white" : "border-line bg-panel text-ink"}`} onClick={() => setActiveGroup(group)}>
+            <button key={group} className={`min-h-10 shrink-0 rounded-md border px-3 text-sm font-medium ${activeGroup === group ? "border-rose-500 bg-rose-600 text-white" : "border-white/15 bg-white/10 text-white/75"}`} onClick={() => setActiveGroup(group)}>
               {group}
             </button>
           ))}
@@ -200,94 +185,84 @@ export function HomePage() {
         </section>
       )}
 
-      <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel shadow-soft">
-        <div className="overflow-x-auto">
-          <div className="grid gap-0" style={{ minWidth: `${96 + TIMELINE_WIDTH}px` }}>
-            <div className="sticky top-0 z-10 grid grid-cols-[6rem_minmax(0,1fr)] border-b border-line bg-panel/95 backdrop-blur">
-              <div className="sticky left-0 z-20 grid place-items-center border-r border-line bg-panel px-2 py-3 text-ink/45">
+      <section className="min-w-0 overflow-hidden rounded-md border border-black bg-[#0b0c0f] text-white shadow-soft">
+        <div className="overflow-x-auto scrollbar-none">
+          <div className="grid min-w-[860px] gap-0">
+            <div className="sticky top-0 z-10 grid grid-cols-[4.75rem_minmax(0,1fr)] border-b border-white/10 bg-[#14161a]/95 backdrop-blur">
+              <div className="grid place-items-center border-r border-white/10 px-2 py-3 text-white/45">
                 <Filter size={18} />
               </div>
-              <div className="relative h-11" style={{ width: `${TIMELINE_WIDTH}px` }}>
-                {timeline.map((slot) => (
-                  <div
-                    key={`${slot.time}-${slot.offset}`}
-                    className="absolute top-0 h-full border-l border-line px-3 py-3 text-sm font-semibold text-ink/60"
-                    style={{ left: `${slot.offset}px`, width: `${SLOT_WIDTH}px` }}
-                  >
-                    {slot.time}
-                  </div>
+              <div className="grid grid-cols-4 text-sm font-semibold text-white/60">
+                {timeline.map((time) => (
+                  <div key={time} className="border-r border-white/10 px-4 py-3 last:border-r-0">{time}</div>
                 ))}
               </div>
             </div>
             {loading && airing.length === 0 && (
-              <div className="p-4 text-sm text-ink/60">Loading guide...</div>
+              <div className="p-4 text-sm text-white/60">Loading guide...</div>
             )}
             {!loading && airing.length === 0 && (
-              <div className="p-4 text-sm text-ink/60">No channels match this view.</div>
+              <div className="p-4 text-sm text-white/60">No channels match this view.</div>
             )}
             {airing.map((item) => (
-              <article key={item.channel_id} className="grid min-h-[76px] grid-cols-[6rem_minmax(0,1fr)] border-b border-line last:border-b-0">
+              <article key={item.channel_id} className="grid min-h-[74px] grid-cols-[4.75rem_minmax(0,1fr)] border-b border-black/80 last:border-b-0">
                 <Link
                   to={`/channel/${item.channel_id}`}
-                  className="sticky left-0 z-10 grid place-items-center border-r border-line bg-panel px-2 py-2"
+                  className="grid place-items-center border-r border-black/80 bg-[#24272c] px-2 py-2"
                   title={item.display_name}
                 >
                   <div className="grid justify-items-center gap-1">
                     <ChannelLogo src={item.logo_url} name={item.display_name} size="sm" />
-                    <span className="text-[0.68rem] font-bold tabular-nums text-ink/55">{item.channel_number ?? item.sort_order + 1}</span>
+                    <span className="text-[0.68rem] font-bold tabular-nums text-white/55">{item.channel_number ?? item.sort_order + 1}</span>
                   </div>
                 </Link>
-                <div className="relative bg-mist/60 p-1" style={{ width: `${TIMELINE_WIDTH}px` }}>
-                  {timeline.slice(0, -1).map((slot) => (
-                    <div
-                      key={`line-${item.channel_id}-${slot.offset}`}
-                      className="absolute top-0 h-full border-l border-line/70"
-                      style={{ left: `${slot.offset}px` }}
-                    />
-                  ))}
-                  {(item.programs ?? []).map((program) => {
-                    const style = programPosition(program.start_time, program.end_time, guideStartMs);
-                    const isCurrent = new Date(program.start_time).getTime() <= Date.now() && new Date(program.end_time).getTime() > Date.now();
-                    return (
-                      <Link
-                        key={program.id}
-                        to={`/channel/${item.channel_id}`}
-                        className={`group/program absolute top-1 min-w-0 overflow-hidden rounded-[3px] border px-3 py-2 transition ${
-                          isCurrent
-                            ? "border-accent bg-panel text-ink shadow-sm hover:border-accent"
-                            : "border-line bg-panel/80 text-ink hover:border-accent hover:bg-panel"
-                        }`}
-                        style={{ left: `${style.left}px`, width: `${style.width - 4}px`, height: "68px" }}
-                        title={`${program.title} ${timeRange(program.start_time, program.end_time)}`}
-                      >
-                        {isCurrent && (
-                          <div className="absolute inset-x-0 bottom-0 h-1 bg-ink/10">
-                            <div className="h-full bg-accent" style={{ width: `${progress(program.start_time, program.end_time)}%` }} />
-                          </div>
-                        )}
-                        <div className="truncate text-xs font-semibold text-ink/45">{timeRange(program.start_time, program.end_time)}</div>
-                        <div className="mt-1 truncate font-semibold">{program.title}</div>
-                        <div className="mt-1 truncate text-xs text-ink/55">{program.category || program.subtitle || item.group_title}</div>
-                      </Link>
-                    );
-                  })}
-                  {(item.programs ?? []).length === 0 && (
+                <div className="grid grid-cols-[minmax(22rem,1.45fr)_minmax(14rem,0.8fr)_minmax(14rem,0.8fr)_auto] gap-1 bg-[#15171b] p-1">
+                  <Link
+                    to={`/channel/${item.channel_id}`}
+                    className="group/program relative min-w-0 overflow-hidden rounded-[3px] border border-white/5 bg-[#2b2d31] px-4 py-3 text-left transition hover:border-white hover:bg-white hover:text-[#111318]"
+                  >
+                    {item.start_time && item.end_time && (
+                      <div className="absolute inset-x-0 bottom-0 h-1 bg-white/10">
+                        <div className="h-full bg-red-500" style={{ width: `${progress(item.start_time, item.end_time)}%` }} />
+                      </div>
+                    )}
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold uppercase text-white/45 group-hover/program:text-black/45">{item.display_name}</div>
+                        <h2 className="truncate text-base font-bold">{item.title ?? "No guide data"}</h2>
+                        <p className="mt-1 truncate text-sm text-white/55 group-hover/program:text-black/55">
+                          {item.subtitle || item.category || item.group_title}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right text-xs font-semibold text-red-400 group-hover/program:text-red-600">
+                        {minutesRemaining(item.end_time)}
+                      </div>
+                    </div>
+                  </Link>
+                  {(item.upcoming ?? []).map((program) => (
                     <Link
+                      key={program.id}
                       to={`/channel/${item.channel_id}`}
-                      className="absolute top-1 rounded-[3px] border border-line bg-panel/70 px-3 py-2 text-sm text-ink/50"
-                      style={{ left: 0, width: `${Math.min(420, TIMELINE_WIDTH - 4)}px`, height: "68px" }}
+                      className="min-w-0 overflow-hidden rounded-[3px] border border-white/5 bg-[#222429] px-4 py-3 transition hover:border-white/60 hover:bg-[#30333a]"
                     >
-                      No guide data for this window
+                      <div className="truncate text-xs font-semibold text-white/35">{timeRange(program.start_time, program.end_time)}</div>
+                      <div className="mt-1 truncate font-semibold text-white/80">{program.title}</div>
+                      <div className="mt-1 truncate text-xs text-white/40">{program.category || program.subtitle}</div>
                     </Link>
-                  )}
-                  <div className="sticky right-1 ml-auto grid h-[68px] w-11 place-items-center">
-                    <FavoriteButton active={Boolean(item.favorite)} onClick={() => toggleFavorite(item).catch(() => undefined)} />
+                  ))}
+                  {Array.from({ length: Math.max(0, 2 - (item.upcoming?.length ?? 0)) }).map((_, index) => (
+                    <div key={`empty-${item.channel_id}-${index}`} className="rounded-[3px] border border-white/5 bg-[#1d1f23] px-4 py-3 text-sm text-white/30">
+                      Upcoming unavailable
+                    </div>
+                  ))}
+                  <div className="grid place-items-center px-1">
+                    <FavoriteButton active={Boolean(item.favorite)} tone="dark" onClick={() => toggleFavorite(item).catch(() => undefined)} />
                   </div>
                 </div>
               </article>
             ))}
             <div ref={loadMoreRef} className="h-8" />
-            {loadingMore && <div className="p-4 text-center text-sm text-ink/60">Loading more channels...</div>}
+            {loadingMore && <div className="p-4 text-center text-sm text-white/60">Loading more channels...</div>}
           </div>
         </div>
       </section>
