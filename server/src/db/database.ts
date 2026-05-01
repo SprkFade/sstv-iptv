@@ -1,0 +1,150 @@
+import Database from "better-sqlite3";
+import bcrypt from "bcryptjs";
+import { config, ensureRuntimeDirs } from "../config.js";
+
+let db: Database.Database | null = null;
+
+export function getDb() {
+  if (!db) {
+    ensureRuntimeDirs();
+    db = new Database(config.databasePath);
+    db.pragma("journal_mode = WAL");
+    db.pragma("foreign_keys = ON");
+  }
+  return db;
+}
+
+export function migrate() {
+  const database = getDb();
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE,
+      role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
+      auth_provider TEXT NOT NULL CHECK(auth_provider IN ('local', 'plex')),
+      plex_user_id TEXT UNIQUE,
+      plex_username TEXT,
+      password_hash TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS channels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tvg_id TEXT,
+      tvg_name TEXT,
+      display_name TEXT NOT NULL,
+      logo_url TEXT,
+      logo_cache_path TEXT,
+      group_title TEXT,
+      stream_url TEXT NOT NULL,
+      xmltv_channel_id TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS programs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      subtitle TEXT,
+      description TEXT,
+      category TEXT,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS favorites (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, channel_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS refresh_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      status TEXT NOT NULL CHECK(status IN ('running', 'success', 'failed')),
+      started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finished_at TEXT,
+      channel_count INTEGER NOT NULL DEFAULT 0,
+      program_count INTEGER NOT NULL DEFAULT 0,
+      matched_count INTEGER NOT NULL DEFAULT 0,
+      error TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_channels_enabled_group ON channels(enabled, group_title);
+    CREATE INDEX IF NOT EXISTS idx_channels_tvg_id ON channels(tvg_id);
+    CREATE INDEX IF NOT EXISTS idx_channels_xmltv_channel_id ON channels(xmltv_channel_id);
+    CREATE INDEX IF NOT EXISTS idx_programs_channel_time ON programs(channel_id, start_time, end_time);
+    CREATE INDEX IF NOT EXISTS idx_programs_time ON programs(start_time, end_time);
+    CREATE INDEX IF NOT EXISTS idx_programs_title ON programs(title);
+    CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+  `);
+
+  seedSettings();
+  upsertAdminUser();
+}
+
+function seedSettings() {
+  const insert = getDb().prepare(
+    "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)"
+  );
+  insert.run("m3u_url", config.m3uUrl);
+  insert.run("xmltv_url", config.xmltvUrl);
+  insert.run("refresh_interval_hours", String(config.refreshIntervalHours));
+  insert.run("plex_server_identifier", config.plexServerIdentifier);
+}
+
+function upsertAdminUser() {
+  const passwordHash = bcrypt.hashSync(config.adminPassword, 12);
+  const existing = getDb()
+    .prepare("SELECT id FROM users WHERE auth_provider = 'local' AND role = 'admin' LIMIT 1")
+    .get() as { id: number } | undefined;
+
+  if (existing) {
+    getDb()
+      .prepare(
+        "UPDATE users SET username = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      )
+      .run(config.adminUsername, passwordHash, existing.id);
+    return;
+  }
+
+  getDb()
+    .prepare(
+      "INSERT INTO users (username, role, auth_provider, password_hash) VALUES (?, 'admin', 'local', ?)"
+    )
+    .run(config.adminUsername, passwordHash);
+}
+
+export function setting(key: string, fallback = "") {
+  const row = getDb().prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as
+    | { value: string }
+    | undefined;
+  return row?.value ?? fallback;
+}
+
+export function setSetting(key: string, value: string) {
+  getDb()
+    .prepare(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES (?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`
+    )
+    .run(key, value);
+}

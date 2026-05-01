@@ -1,0 +1,12 @@
+services:
+  tv-guide:
+    build: .
+    container_name: tv-guide-pwa
+    ports:
+      - "3025:3025"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./cache:/app/cache
+    restart: unless-stopped

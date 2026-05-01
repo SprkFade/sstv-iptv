@@ -1,0 +1,17 @@
+{
+  "name": "TV Guide PWA",
+  "short_name": "TV Guide",
+  "description": "A mobile-first IPTV and XMLTV guide.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#0f766e",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

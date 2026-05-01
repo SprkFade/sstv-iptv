@@ -1,0 +1,13 @@
+node_modules/
+client/dist/
+server/dist/
+client/*.tsbuildinfo
+client/vite.config.js
+client/vite.config.d.ts
+data/*
+cache/*
+!data/.gitkeep
+!cache/.gitkeep
+.env
+.DS_Store
+npm-debug.log*
