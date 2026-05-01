@@ -2,6 +2,7 @@ import type { ParsedM3uChannel } from "../types/app.js";
 
 interface XcLiveStream {
   name?: string;
+  num?: number | string;
   stream_id?: number | string;
   stream_icon?: string;
   epg_channel_id?: string;
@@ -78,8 +79,9 @@ export async function fetchXcChannels(credentials: XcCredentials): Promise<Parse
   );
 
   return streams
-    .map((stream) => {
+    .map((stream, index) => {
       const streamId = String(stream.stream_id ?? "");
+      const channelNumber = Number(stream.num);
       const displayName = stream.name?.trim() || `Channel ${streamId}`;
       const tvgId = stream.epg_channel_id?.trim() || stream.custom_sid?.trim() || "";
       const groupTitle = categoryNames.get(String(stream.category_id ?? "")) ?? "Ungrouped";
@@ -89,7 +91,9 @@ export async function fetchXcChannels(credentials: XcCredentials): Promise<Parse
         displayName,
         logoUrl: stream.stream_icon?.trim() || "",
         groupTitle,
-        streamUrl: stream.direct_source?.trim() || (streamId ? xcStreamUrl(credentials, streamId) : "")
+        streamUrl: stream.direct_source?.trim() || (streamId ? xcStreamUrl(credentials, streamId) : ""),
+        channelNumber: Number.isFinite(channelNumber) && channelNumber > 0 ? channelNumber : null,
+        sortOrder: index
       };
     })
     .filter((channel) => channel.streamUrl);

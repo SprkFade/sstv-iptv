@@ -7,11 +7,11 @@ export const favoritesRouter = Router();
 favoritesRouter.get("/", (req: AuthedRequest, res) => {
   const rows = getDb()
     .prepare(
-      `SELECT channels.id, display_name, logo_url, group_title, stream_url
+      `SELECT channels.id, display_name, logo_url, group_title, stream_url, channel_number, sort_order
        FROM favorites
        JOIN channels ON channels.id = favorites.channel_id
        WHERE favorites.user_id = ? AND channels.enabled = 1
-       ORDER BY display_name COLLATE NOCASE`
+       ORDER BY CASE WHEN channel_number IS NULL THEN 1 ELSE 0 END, channel_number, sort_order, display_name COLLATE NOCASE`
     )
     .all(req.user!.id);
   res.json({ favorites: rows });

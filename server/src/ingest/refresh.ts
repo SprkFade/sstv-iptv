@@ -184,17 +184,18 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
          ORDER BY CASE WHEN tvg_id = ? THEN 0 ELSE 1 END
          LIMIT 1`
         );
-        const insertChannel = ingestDb.prepare(
-          `INSERT INTO channels
-         (tvg_id, tvg_name, display_name, logo_url, group_title, stream_url, xmltv_channel_id, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
-        );
-        const updateChannel = ingestDb.prepare(
-          `UPDATE channels
+      const insertChannel = ingestDb.prepare(
+        `INSERT INTO channels
+         (tvg_id, tvg_name, display_name, logo_url, group_title, stream_url, xmltv_channel_id, channel_number, sort_order, enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+      );
+      const updateChannel = ingestDb.prepare(
+        `UPDATE channels
          SET tvg_id = ?, tvg_name = ?, display_name = ?, logo_url = ?, group_title = ?,
-             stream_url = ?, xmltv_channel_id = ?, enabled = 1, updated_at = CURRENT_TIMESTAMP
+             stream_url = ?, xmltv_channel_id = ?, channel_number = ?, sort_order = ?,
+             enabled = 1, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`
-        );
+      );
         const insertProgram = ingestDb.prepare(
           `INSERT INTO programs
          (channel_id, title, subtitle, description, category, start_time, end_time)
@@ -216,7 +217,9 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
             channel.logoUrl || xmltvMatch?.icon || "",
             channel.groupTitle,
             channel.streamUrl,
-            xmltvMatch?.id ?? ""
+            xmltvMatch?.id ?? "",
+            channel.channelNumber,
+            channel.sortOrder
           ] as const;
 
           const channelId = existing

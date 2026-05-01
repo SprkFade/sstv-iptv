@@ -22,6 +22,8 @@ export interface ParsedM3uChannel {
   logoUrl: string;
   groupTitle: string;
   streamUrl: string;
+  channelNumber: number | null;
+  sortOrder: number;
 }
 
 export interface XmltvChannel {

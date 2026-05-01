@@ -31,7 +31,9 @@ export function parseM3u(input: string): ParsedM3uChannel[] {
         displayName,
         logoUrl: pending["tvg-logo"] ?? "",
         groupTitle: pending["group-title"] ?? "Ungrouped",
-        streamUrl: line
+        streamUrl: line,
+        channelNumber: null,
+        sortOrder: channels.length
       });
       pending = null;
       pendingName = "";

@@ -51,6 +51,8 @@ export function migrate() {
       group_title TEXT,
       stream_url TEXT NOT NULL,
       xmltv_channel_id TEXT,
+      channel_number INTEGER,
+      sort_order INTEGER NOT NULL DEFAULT 0,
       enabled INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -95,8 +97,19 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
   `);
 
+  addColumnIfMissing(database, "channels", "channel_number", "INTEGER");
+  addColumnIfMissing(database, "channels", "sort_order", "INTEGER NOT NULL DEFAULT 0");
+  database.exec("CREATE INDEX IF NOT EXISTS idx_channels_enabled_sort ON channels(enabled, channel_number, sort_order, display_name);");
+
   seedSettings();
   closeInterruptedRefreshRuns();
+}
+
+function addColumnIfMissing(database: Database.Database, table: string, column: string, definition: string) {
+  const columns = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!columns.some((row) => row.name === column)) {
+    database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 function closeInterruptedRefreshRuns() {
