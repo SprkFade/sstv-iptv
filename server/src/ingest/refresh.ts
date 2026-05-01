@@ -6,7 +6,7 @@ import { matchChannels } from "./match.js";
 import { fetchXcChannels, xcXmltvUrl, type XcCredentials } from "./xc.js";
 
 const GUIDE_LOOKBACK_HOURS = 2;
-const GUIDE_LOOKAHEAD_DAYS = 14;
+const GUIDE_LOOKAHEAD_HOURS = 24;
 
 export interface RefreshProgress {
   active: boolean;
@@ -235,10 +235,10 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
         }
 
         const windowStart = new Date(Date.now() - GUIDE_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
-        const windowEnd = new Date(Date.now() + GUIDE_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        const windowEnd = new Date(Date.now() + GUIDE_LOOKAHEAD_HOURS * 60 * 60 * 1000).toISOString();
         setProgress({
           stage: "Saving guide programs",
-          detail: `Scanning XMLTV programs for matched channels through ${GUIDE_LOOKAHEAD_DAYS} days ahead.`,
+          detail: `Scanning XMLTV programs for matched channels through ${GUIDE_LOOKAHEAD_HOURS} hours ahead.`,
           totalProgramCount: 0,
           programCount: 0,
           savedProgramCount: 0
