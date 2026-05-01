@@ -1,7 +1,7 @@
 import { Readable } from "node:stream";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { Router } from "express";
 import { config } from "../config.js";
 import { getDb } from "../db/database.js";
@@ -13,16 +13,15 @@ type HlsSession = {
   dir: string;
   exited: boolean;
   exitCode: number | null;
+  inputAbort: AbortController;
   lastAccess: number;
-  process: ChildProcess;
+  process: ChildProcessWithoutNullStreams;
   stderr: string;
   streamUrl: string;
 };
 
 const hlsSessions = new Map<number, HlsSession>();
 const HLS_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
-const FFMPEG_NETWORK_TIMEOUT_US = "60000000";
-const FFMPEG_INPUT_HEADERS = "Accept: */*\r\nConnection: keep-alive\r\nIcy-MetaData: 1\r\n";
 
 function findChannel(channelId: number) {
   return getDb()
@@ -52,6 +51,7 @@ function stopHlsSession(channelId: number) {
   const session = hlsSessions.get(channelId);
   if (!session) return;
   hlsSessions.delete(channelId);
+  session.inputAbort.abort();
   if (!session.process.killed) session.process.kill("SIGTERM");
 }
 
@@ -59,16 +59,61 @@ function redactStreamDetails(value: string, streamUrl: string) {
   let redacted = value.replaceAll(streamUrl, "[stream-url]");
   try {
     const url = new URL(streamUrl);
-    redacted = redacted.replaceAll(url.username, "[username]");
-    redacted = redacted.replaceAll(url.password, "[password]");
-    redacted = redacted.replace(
-      /(https?:\/\/[^/\s]+\/live\/)[^/\s]+\/[^/\s]+\/([^/\s]+)/g,
-      "$1[username]/[password]/$2"
-    );
+    const [, username, password] = url.pathname.match(/\/live\/([^/]+)\/([^/]+)\//) ?? [];
+    redacted = redacted.replace(/(https?:\/\/[^/\s]+\/live\/)[^/\s]+\/[^/\s]+\//g, "$1[username]/[password]/");
+    for (const [token, replacement] of [[username, "[username]"], [password, "[password]"]] as const) {
+      if (token && token.length > 2) {
+        redacted = redacted.replaceAll(token, replacement);
+      }
+    }
   } catch {
     redacted = redacted.replace(/(\/live\/)[^/\s]+\/[^/\s]+\//g, "$1[username]/[password]/");
   }
   return redacted;
+}
+
+function appendStderr(current: string, message: string) {
+  return (current + message).slice(-4000);
+}
+
+function pipeProviderStreamToFfmpeg(
+  streamUrl: string,
+  ffmpeg: ChildProcessWithoutNullStreams,
+  onError: (message: string) => void
+) {
+  const abort = new AbortController();
+
+  void (async () => {
+    try {
+      const upstream = await fetch(streamUrl, {
+        signal: abort.signal,
+        headers: {
+          "user-agent": config.ffmpegUserAgent,
+          "accept": "*/*",
+          "icy-metadata": "1"
+        }
+      });
+
+      if (!upstream.ok || !upstream.body) {
+        throw new Error(`Provider stream request failed: ${upstream.status} ${upstream.statusText}`);
+      }
+
+      const input = Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
+      input.on("error", (error) => {
+        if (!abort.signal.aborted) onError(`\nNode stream input error: ${error.message}`);
+      });
+      ffmpeg.stdin.on("error", () => {
+        input.destroy();
+      });
+      input.pipe(ffmpeg.stdin);
+    } catch (error) {
+      if (abort.signal.aborted) return;
+      onError(`\nNode stream input failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      if (!ffmpeg.killed) ffmpeg.kill("SIGTERM");
+    }
+  })();
+
+  return abort;
 }
 
 function ensureHlsSession(channelId: number, streamUrl: string) {
@@ -92,16 +137,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-fflags", "+genpts+discardcorrupt",
     "-analyzeduration", "10000000",
     "-probesize", "10000000",
-    "-reconnect", "1",
-    "-reconnect_streamed", "1",
-    "-reconnect_at_eof", "1",
-    "-reconnect_on_network_error", "1",
-    "-reconnect_on_http_error", "4xx,5xx",
-    "-reconnect_delay_max", "5",
-    "-user_agent", config.ffmpegUserAgent,
-    "-headers", FFMPEG_INPUT_HEADERS,
-    "-rw_timeout", FFMPEG_NETWORK_TIMEOUT_US,
-    "-i", streamUrl,
+    "-i", "pipe:0",
     "-map", "0:v:0?",
     "-map", "0:a:0?",
     "-vf", "scale=min(1280\\,iw):-2:force_original_aspect_ratio=decrease,fps=30,format=yuv420p",
@@ -129,31 +165,37 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-hls_flags", "delete_segments+append_list+independent_segments+omit_endlist",
     "-hls_segment_filename", segmentPattern,
     "index.m3u8"
-  ], { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+  ], { cwd: dir, stdio: ["pipe", "pipe", "pipe"] });
 
   const session: HlsSession = {
     dir,
     exited: false,
     exitCode: null,
+    inputAbort: new AbortController(),
     lastAccess: Date.now(),
     process: ffmpeg,
     stderr: "",
     streamUrl
   };
 
+  session.inputAbort = pipeProviderStreamToFfmpeg(streamUrl, ffmpeg, (message) => {
+    session.stderr = appendStderr(session.stderr, message);
+  });
+
   ffmpeg.stderr.setEncoding("utf8");
   ffmpeg.stderr.on("data", (chunk: string) => {
-    session.stderr = (session.stderr + chunk).slice(-4000);
+    session.stderr = appendStderr(session.stderr, chunk);
   });
 
   ffmpeg.on("error", (error) => {
     session.exited = true;
-    session.stderr = (session.stderr + error.message).slice(-4000);
+    session.stderr = appendStderr(session.stderr, error.message);
   });
 
   ffmpeg.on("close", (code) => {
     session.exited = true;
     session.exitCode = code;
+    session.inputAbort.abort();
     if (Date.now() - session.lastAccess < HLS_IDLE_TIMEOUT_MS) {
       console.warn("FFmpeg HLS transcode exited", {
         channelId,
@@ -262,16 +304,10 @@ streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
   const ffmpeg = spawn(config.ffmpegPath, [
     "-hide_banner",
     "-loglevel", "warning",
-    "-reconnect", "1",
-    "-reconnect_streamed", "1",
-    "-reconnect_at_eof", "1",
-    "-reconnect_on_network_error", "1",
-    "-reconnect_on_http_error", "4xx,5xx",
-    "-reconnect_delay_max", "5",
-    "-user_agent", config.ffmpegUserAgent,
-    "-headers", FFMPEG_INPUT_HEADERS,
-    "-rw_timeout", FFMPEG_NETWORK_TIMEOUT_US,
-    "-i", channel.stream_url,
+    "-fflags", "+genpts+discardcorrupt",
+    "-analyzeduration", "10000000",
+    "-probesize", "10000000",
+    "-i", "pipe:0",
     "-map", "0:v:0?",
     "-map", "0:a:0?",
     "-c:v", "libx264",
@@ -288,13 +324,17 @@ streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
     "-ar", "48000",
     "-f", "mpegts",
     "pipe:1"
-  ], { stdio: ["ignore", "pipe", "pipe"] });
+  ], { stdio: ["pipe", "pipe", "pipe"] });
 
   let stderr = "";
   let closedByClient = false;
+  const inputAbort = pipeProviderStreamToFfmpeg(channel.stream_url, ffmpeg, (message) => {
+    stderr = appendStderr(stderr, message);
+  });
 
   const stop = () => {
     closedByClient = true;
+    inputAbort.abort();
     if (!ffmpeg.killed) ffmpeg.kill("SIGTERM");
   };
 
@@ -303,7 +343,7 @@ streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
 
   ffmpeg.stderr.setEncoding("utf8");
   ffmpeg.stderr.on("data", (chunk: string) => {
-    stderr = (stderr + chunk).slice(-4000);
+    stderr = appendStderr(stderr, chunk);
   });
 
   ffmpeg.on("error", (error) => {
