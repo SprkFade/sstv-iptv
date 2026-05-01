@@ -37,6 +37,8 @@ If GHCR shows the package as private, add a GHCR registry in Portainer with:
 - Username: `SprkFade`
 - Password/token: a GitHub token with `read:packages`
 
+The included Docker GitHub Action is manual by default. If you want it to publish future images with `GITHUB_TOKEN`, open the GHCR package settings and add `SprkFade/sstv-iptv` under "Manage Actions access" with write access.
+
 Create bind-mount directories on the host first:
 
 ```bash
