@@ -67,7 +67,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   fs.mkdirSync(dir, { recursive: true });
 
   const playlistPath = path.join(dir, "index.m3u8");
-  const segmentPattern = path.join(dir, "segment_%05d.ts");
+  const segmentPattern = "segment_%05d.m4s";
   const ffmpeg = spawn(config.ffmpegPath, [
     "-hide_banner",
     "-loglevel", "warning",
@@ -95,10 +95,12 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-f", "hls",
     "-hls_time", "2",
     "-hls_list_size", "6",
+    "-hls_segment_type", "fmp4",
+    "-hls_fmp4_init_filename", "init.mp4",
     "-hls_flags", "delete_segments+append_list+independent_segments+omit_endlist",
     "-hls_segment_filename", segmentPattern,
-    playlistPath
-  ], { stdio: ["ignore", "pipe", "pipe"] });
+    "index.m3u8"
+  ], { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
 
   const session: HlsSession = {
     dir,
@@ -146,7 +148,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
   const fileParam = req.params.file;
   const file = Array.isArray(fileParam) ? fileParam[0] : fileParam;
   if (!file) return res.status(400).json({ error: "Invalid HLS file" });
-  if (!/^index\.m3u8$/.test(file) && !/^segment_\d{5}\.ts$/.test(file)) {
+  if (!/^index\.m3u8$/.test(file) && !/^init\.mp4$/.test(file) && !/^segment_\d{5}\.m4s$/.test(file)) {
     return res.status(400).json({ error: "Invalid HLS file" });
   }
 
@@ -162,7 +164,13 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
 
     res.setHeader("cache-control", "no-store");
     res.setHeader("x-accel-buffering", "no");
-    res.type(file.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t");
+    if (file.endsWith(".m3u8")) {
+      res.type("application/vnd.apple.mpegurl");
+    } else if (file.endsWith(".mp4")) {
+      res.type("video/mp4");
+    } else {
+      res.type("video/iso.segment");
+    }
     return res.sendFile(filePath);
   } catch (error) {
     const session = hlsSessions.get(channelId);

@@ -1,25 +1,9 @@
 import Hls from "hls.js";
-import mpegts from "mpegts.js";
 import { ExternalLink, Play, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 function isMobile() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-}
-
-function isHlsSource(src: string) {
-  return /\.m3u8(?:[?#].*)?$/i.test(src);
-}
-
-function hlsCandidate(src: string) {
-  try {
-    const url = new URL(src);
-    if (!/\.ts$/i.test(url.pathname)) return "";
-    url.pathname = url.pathname.replace(/\.ts$/i, ".m3u8");
-    return url.toString();
-  } catch {
-    return src.replace(/\.ts([?#].*)?$/i, ".m3u8$1");
-  }
 }
 
 export function VideoPlayer({ channelId, src, title }: { channelId: number; src: string; title: string }) {
@@ -30,7 +14,6 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
   const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
   const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
   const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8`, [channelId]);
-  const hlsSrc = useMemo(() => isHlsSource(src) ? src : hlsCandidate(src), [src]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -41,126 +24,54 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     video.load();
 
     let hls: Hls | null = null;
-    let tsPlayer: mpegts.Player | null = null;
-    let triedTranscodeHls = false;
-    let triedTranscode = false;
-    let triedHls = false;
-    let triedProxy = false;
     let disposed = false;
+    let hlsError = false;
 
     const setPlaybackError = (message: string) => {
       if (!disposed) setError(message);
     };
-    const onVideoError = () => setPlaybackError("The browser could not decode this stream.");
+    const onVideoError = () => {
+      if (!hlsError) setPlaybackError("The browser could not decode the FFmpeg HLS stream.");
+    };
     video.addEventListener("error", onVideoError);
 
-    const playHls = (source: string, label: string, onFatal: () => void) => {
-      hls?.destroy();
-      hls = null;
-      tsPlayer?.destroy();
-      tsPlayer = null;
-      setError("");
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = transcodeHlsSrc;
+      return () => {
+        disposed = true;
+        video.removeEventListener("error", onVideoError);
+      };
+    }
 
-      if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        video.src = source;
-        return;
-      }
+    if (!Hls.isSupported()) {
+      setPlaybackError("This browser does not support HLS playback through Media Source Extensions.");
+      return () => {
+        disposed = true;
+        video.removeEventListener("error", onVideoError);
+      };
+    }
 
-      if (!Hls.isSupported()) {
-        onFatal();
-        return;
-      }
-
-      hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        liveSyncDurationCount: 3
-      });
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (!data.fatal) return;
-        console.warn(`${label} playback error`, data);
-        onFatal();
-      });
-      hls.loadSource(source);
-      hls.attachMedia(video);
-    };
-
-    const startProviderHls = () => {
-      if (triedHls || disposed) return;
-      triedHls = true;
-
-      if (!hlsSrc) {
-        startMpegTs("proxy");
-        return;
-      }
-
-      playHls(hlsSrc, "Provider HLS", () => startMpegTs("proxy"));
-    };
-
-    const startTranscodedHls = () => {
-      if (triedTranscodeHls || disposed) return;
-      triedTranscodeHls = true;
-      playHls(transcodeHlsSrc, "FFmpeg HLS transcode", startProviderHls);
-    };
-
-    const startMpegTs = (mode: "transcode" | "proxy") => {
-      if (disposed) return;
-      if (mode === "transcode" && triedTranscode) return;
-      if (mode === "proxy" && triedProxy) return;
-      if (mode === "transcode") triedTranscode = true;
-      if (mode === "proxy") triedProxy = true;
-      hls?.destroy();
-      hls = null;
-      tsPlayer?.destroy();
-      tsPlayer = null;
-      setError("");
-
-      const streamUrl = mode === "transcode" ? transcodeSrc : proxySrc;
-      const label = mode === "transcode" ? "FFmpeg transcode" : "stream proxy";
-
-      if (mpegts.getFeatureList().mseLivePlayback) {
-        try {
-          tsPlayer = mpegts.createPlayer({
-            type: "mpegts",
-            isLive: true,
-            url: streamUrl
-          }, {
-            enableWorker: true,
-            lazyLoad: false,
-            liveBufferLatencyChasing: true
-          });
-          tsPlayer.on(mpegts.Events.ERROR, (type, detail, info) => {
-            console.warn(`${label} playback error`, { type, detail, info });
-            if (mode === "transcode") {
-              startProviderHls();
-              return;
-            }
-            const suffix = [type, detail].filter(Boolean).join(": ");
-            setPlaybackError(suffix ? `MPEG-TS playback failed (${suffix}).` : "MPEG-TS playback failed.");
-          });
-          tsPlayer.attachMediaElement(video);
-          tsPlayer.load();
-          return;
-        } catch (err) {
-          if (mode === "transcode") {
-            startProviderHls();
-            return;
-          }
-          setPlaybackError(err instanceof Error ? err.message : "The MPEG-TS player failed to start.");
-        }
-      }
-
-      video.src = streamUrl;
-    };
-
-    startTranscodedHls();
+    hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: true,
+      liveSyncDurationCount: 3
+    });
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (!data.fatal) return;
+      hlsError = true;
+      console.warn("FFmpeg HLS playback error", data);
+      const code = data.response?.code ? ` HTTP ${data.response.code}` : "";
+      const reason = [data.type, data.details].filter(Boolean).join(": ");
+      setPlaybackError(`FFmpeg HLS failed${reason ? ` (${reason}${code})` : code ? ` (${code.trim()})` : ""}.`);
+    });
+    hls.loadSource(transcodeHlsSrc);
+    hls.attachMedia(video);
     return () => {
       disposed = true;
       hls?.destroy();
-      tsPlayer?.destroy();
       video.removeEventListener("error", onVideoError);
     };
-  }, [hlsSrc, mobile, proxySrc, retryKey, transcodeHlsSrc, transcodeSrc]);
+  }, [mobile, retryKey, transcodeHlsSrc]);
 
   if (mobile) {
     return (
