@@ -9,7 +9,7 @@ A production-oriented, mobile-first IPTV guide that imports live channels from a
 - First-launch setup wizard for admin credentials, XtremeCodes login, guide settings, refresh cadence, and Plex server selection.
 - Plex OAuth for regular users with configured server access validation.
 - Channel browsing, groups, current airing view, search, favorites, and channel playback.
-- Desktop playback with FFmpeg-generated live HLS and raw diagnostic links; mobile opens streams natively.
+- Desktop and mobile playback through FFmpeg-generated live HLS, with raw diagnostic links available from playback errors.
 - Installable PWA shell with cached static assets.
 - SQLite data and cache directories persisted through bind mounts only.
 

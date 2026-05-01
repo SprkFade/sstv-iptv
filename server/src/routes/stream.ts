@@ -21,7 +21,7 @@ type HlsSession = {
 };
 
 const hlsSessions = new Map<number, HlsSession>();
-const HLS_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+const HLS_IDLE_TIMEOUT_MS = 30 * 1000;
 
 function findChannel(channelId: number) {
   return getDb()

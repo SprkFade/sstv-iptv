@@ -24,7 +24,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || mobile) return;
+    if (!video) return;
 
     setError("");
     setLoadingMessage("Preparing stream...");
@@ -156,26 +156,13 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     };
   }, [mobile, retryKey, transcodeHlsSrc]);
 
-  if (mobile) {
-    return (
-      <div className="grid min-h-64 place-items-center rounded-md border border-line bg-black p-6 text-center text-white">
-        <div>
-          <Play className="mx-auto mb-4" size={34} />
-          <a className="inline-flex min-h-11 items-center gap-2 rounded-md bg-accent px-4 font-semibold text-white" href={src}>
-            Open stream <ExternalLink size={18} />
-          </a>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="overflow-hidden rounded-md border border-line bg-black">
       <div className="relative">
         <video
           ref={videoRef}
           className="aspect-video w-full bg-black"
-          autoPlay
+          autoPlay={!mobile}
           controls
           muted
           playsInline
