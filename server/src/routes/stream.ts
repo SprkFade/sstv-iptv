@@ -33,8 +33,10 @@ streamRouter.get("/:channelId", async (req: AuthedRequest, res, next) => {
     }
 
     res.status(upstream.status);
-    res.setHeader("content-type", upstream.headers.get("content-type") || "video/mp2t");
+    const upstreamType = upstream.headers.get("content-type") || "";
+    res.setHeader("content-type", upstreamType && upstreamType !== "application/octet-stream" ? upstreamType : "video/mp2t");
     res.setHeader("cache-control", "no-store");
+    res.setHeader("connection", "keep-alive");
     res.setHeader("x-accel-buffering", "no");
     res.flushHeaders();
 
