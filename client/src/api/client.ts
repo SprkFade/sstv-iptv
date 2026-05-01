@@ -47,6 +47,19 @@ export interface PlexServer {
   owned: boolean;
 }
 
+export interface RefreshProgress {
+  active: boolean;
+  runId: number | null;
+  stage: string;
+  detail: string;
+  channelCount: number;
+  programCount: number;
+  matchedCount: number;
+  startedAt: string | null;
+  updatedAt: string | null;
+  error: string;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: "include",
@@ -119,7 +132,8 @@ export const api = {
   }>("/api/admin/settings"),
   saveSettings: (body: { xcBaseUrl: string; xcUsername: string; xcPassword?: string; xmltvUrl: string; refreshIntervalHours: number; plexServerIdentifier: string }) =>
     request<{ ok: true }>("/api/admin/settings", { method: "PUT", body: JSON.stringify(body) }),
-  refresh: () => request<{ id: number; status: string; channelCount: number; programCount: number; matchedCount: number }>("/api/admin/refresh", { method: "POST" }),
+  refresh: () => request<{ started: boolean; progress: RefreshProgress }>("/api/admin/refresh", { method: "POST" }),
+  refreshStatus: () => request<RefreshProgress>("/api/admin/refresh-status"),
   refreshRuns: () => request<{ runs: Array<Record<string, string | number | null>> }>("/api/admin/refresh-runs"),
   users: () => request<{ users: Array<Record<string, string | number | null>> }>("/api/admin/users")
 };

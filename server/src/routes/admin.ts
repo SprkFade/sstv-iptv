@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { getDb, setSetting, setting } from "../db/database.js";
-import { refreshGuide } from "../ingest/refresh.js";
+import { getRefreshProgress, startRefreshGuide } from "../ingest/refresh.js";
 import { plexAdminStatus } from "../services/plex.js";
 
 export const adminRouter = Router();
@@ -44,11 +44,15 @@ adminRouter.put("/settings", (req, res) => {
 
 adminRouter.post("/refresh", async (_req, res, next) => {
   try {
-    const result = await refreshGuide();
-    res.json(result);
+    const result = startRefreshGuide();
+    res.status(result.started ? 202 : 200).json(result);
   } catch (error) {
     next(error);
   }
+});
+
+adminRouter.get("/refresh-status", (_req, res) => {
+  res.json(getRefreshProgress());
 });
 
 adminRouter.get("/refresh-runs", (_req, res) => {

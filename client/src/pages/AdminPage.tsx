@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Activity, Database, RefreshCw, Server, Users } from "lucide-react";
-import { api } from "../api/client";
+import { api, type RefreshProgress } from "../api/client";
 
 type Settings = Awaited<ReturnType<typeof api.settings>>;
 
@@ -12,23 +12,57 @@ export function AdminPage() {
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [xcPassword, setXcPassword] = useState("");
+  const [refreshStatus, setRefreshStatus] = useState<RefreshProgress | null>(null);
 
   const load = async () => {
-    const [settingsResponse, runResponse, userResponse] = await Promise.all([
+    const [settingsResult, runResult, userResult, statusResult] = await Promise.allSettled([
       api.settings(),
       api.refreshRuns(),
-      api.users()
+      api.users(),
+      api.refreshStatus()
     ]);
-    setSettings(settingsResponse);
+    const failures = [settingsResult, runResult, userResult, statusResult].filter((result) => result.status === "rejected");
+    if (settingsResult.status === "fulfilled") setSettings(settingsResult.value);
+    if (runResult.status === "fulfilled") setRuns(runResult.value.runs);
+    if (userResult.status === "fulfilled") setUsers(userResult.value.users);
+    if (statusResult.status === "fulfilled") {
+      setRefreshStatus(statusResult.value);
+      setRefreshing(statusResult.value.active);
+    }
+    if (failures.length) {
+      const first = failures[0] as PromiseRejectedResult;
+      setError(first.reason instanceof Error ? first.reason.message : "Unable to load all admin data");
+    }
+  };
+
+  const loadRefreshState = async () => {
+    const [statusResponse, runResponse] = await Promise.all([api.refreshStatus(), api.refreshRuns()]);
+    setRefreshStatus(statusResponse);
+    setRefreshing(statusResponse.active);
     setRuns(runResponse.runs);
-    setUsers(userResponse.users);
   };
 
   useEffect(() => {
     load().catch((err) => setError(err instanceof Error ? err.message : "Unable to load admin data"));
   }, []);
 
-  if (!settings) return <div className="text-sm text-ink/60">Loading admin...</div>;
+  useEffect(() => {
+    if (!refreshing && !refreshStatus?.active) return;
+    const timer = window.setInterval(() => {
+      loadRefreshState().catch((err) => setError(err instanceof Error ? err.message : "Unable to load refresh status"));
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [refreshing, refreshStatus?.active]);
+
+  if (!settings) {
+    return (
+      <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
+        <h1 className="text-2xl font-bold">Admin</h1>
+        <p className="mt-1 text-sm text-ink/60">Loading admin settings...</p>
+        {error && <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
+      </section>
+    );
+  }
 
   return (
     <div className="grid gap-4">
@@ -100,13 +134,15 @@ export function AdminPage() {
                 setError("");
                 try {
                   const result = await api.refresh();
-                  setMessage(`Refresh complete: ${result.channelCount} channels, ${result.programCount} programs.`);
-                  await load();
+                  setRefreshStatus(result.progress);
+                  setRefreshing(true);
+                  setMessage(result.started ? "Refresh started." : "Refresh is already running.");
+                  await loadRefreshState();
                 } catch (err) {
                   setError(err instanceof Error ? err.message : "Refresh failed");
-                  await load().catch(() => undefined);
+                  await loadRefreshState().catch(() => undefined);
                 } finally {
-                  setRefreshing(false);
+                  await loadRefreshState().catch(() => undefined);
                 }
               }}
             >
@@ -115,6 +151,37 @@ export function AdminPage() {
           </div>
         </form>
       </section>
+
+      {refreshStatus && (
+        <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold">Refresh status</h2>
+              <p className="text-sm text-ink/60">{refreshStatus.detail || "No refresh is running."}</p>
+            </div>
+            <span className={`rounded-md border px-3 py-1 text-sm font-semibold ${refreshStatus.active ? "border-accent text-accent" : "border-line text-ink/70"}`}>
+              {refreshStatus.stage}
+            </span>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-ink/15">
+            <div className={`h-full rounded-full bg-accent ${refreshStatus.active ? "w-2/3 animate-pulse" : "w-full"}`} />
+          </div>
+          <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
+            <div>
+              <div className="text-ink/60">Channels</div>
+              <div className="font-bold">{refreshStatus.channelCount}</div>
+            </div>
+            <div>
+              <div className="text-ink/60">Programs</div>
+              <div className="font-bold">{refreshStatus.programCount}</div>
+            </div>
+            <div>
+              <div className="text-ink/60">Matched</div>
+              <div className="font-bold">{refreshStatus.matchedCount}</div>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="grid gap-3 md:grid-cols-3">
         <div className="rounded-md border border-line bg-panel p-4 shadow-soft">

@@ -3,6 +3,58 @@ import { parseXmltv } from "./xmltv.js";
 import { matchChannels } from "./match.js";
 import { fetchXcChannels, xcXmltvUrl, type XcCredentials } from "./xc.js";
 
+export interface RefreshProgress {
+  active: boolean;
+  runId: number | null;
+  stage: string;
+  detail: string;
+  channelCount: number;
+  programCount: number;
+  matchedCount: number;
+  startedAt: string | null;
+  updatedAt: string | null;
+  error: string;
+}
+
+let progress: RefreshProgress = {
+  active: false,
+  runId: null,
+  stage: "Idle",
+  detail: "",
+  channelCount: 0,
+  programCount: 0,
+  matchedCount: 0,
+  startedAt: null,
+  updatedAt: null,
+  error: ""
+};
+let refreshInFlight: Promise<Awaited<ReturnType<typeof refreshGuide>>> | null = null;
+
+function setProgress(update: Partial<RefreshProgress>) {
+  progress = {
+    ...progress,
+    ...update,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+export function getRefreshProgress() {
+  return progress;
+}
+
+export function isRefreshRunning() {
+  return Boolean(refreshInFlight);
+}
+
+export function startRefreshGuide() {
+  if (refreshInFlight) return { started: false, progress };
+  refreshInFlight = refreshGuide().finally(() => {
+    refreshInFlight = null;
+  });
+  refreshInFlight.catch(() => undefined);
+  return { started: true, progress };
+}
+
 async function fetchText(url: string, label: string) {
   const response = await fetch(url, {
     headers: {
@@ -29,6 +81,17 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
     .prepare("INSERT INTO refresh_runs (status) VALUES ('running')")
     .run();
   const runId = Number(run.lastInsertRowid);
+  setProgress({
+    active: true,
+    runId,
+    stage: "Preparing refresh",
+    detail: "Checking source configuration.",
+    channelCount: 0,
+    programCount: 0,
+    matchedCount: 0,
+    startedAt: new Date().toISOString(),
+    error: ""
+  });
 
   try {
     const xcCredentials = currentXcCredentials(overrides);
@@ -43,12 +106,33 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
     if (overrides?.password) setSetting("xc_password", overrides.password);
     if (overrides?.xmltvUrl) setSetting("xmltv_url", overrides.xmltvUrl);
 
+    setProgress({
+      stage: "Loading guide sources",
+      detail: "Fetching XtremeCodes live channels and XMLTV guide data."
+    });
     const [sourceChannels, xmltvText] = await Promise.all([
       fetchXcChannels(xcCredentials),
       fetchText(xmltvUrl, "XMLTV guide")
     ]);
+    setProgress({
+      stage: "Parsing XMLTV guide",
+      detail: "Reading channel and program listings.",
+      channelCount: sourceChannels.length
+    });
     const xmltv = parseXmltv(xmltvText);
+    setProgress({
+      stage: "Matching channels",
+      detail: `Matching ${sourceChannels.length} channels with ${xmltv.channels.length} XMLTV entries.`,
+      programCount: xmltv.programs.length
+    });
     const { matches, matchedCount } = matchChannels(sourceChannels, xmltv.channels);
+    setProgress({
+      stage: "Saving guide data",
+      detail: `Saving channels and ${xmltv.programs.length} program entries.`,
+      channelCount: sourceChannels.length,
+      programCount: xmltv.programs.length,
+      matchedCount
+    });
 
     const applyRefresh = db.transaction(() => {
       db.prepare("UPDATE channels SET enabled = 0, updated_at = CURRENT_TIMESTAMP").run();
@@ -124,6 +208,13 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
     });
 
     const counts = applyRefresh();
+    setProgress({
+      stage: "Finalizing refresh",
+      detail: "Writing refresh results.",
+      channelCount: counts.channelCount,
+      programCount: counts.programCount.count,
+      matchedCount: counts.matchedCount
+    });
     db.prepare(
       `UPDATE refresh_runs
        SET status = 'success', finished_at = CURRENT_TIMESTAMP,
@@ -131,12 +222,26 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
        WHERE id = ?`
     ).run(counts.channelCount, counts.programCount.count, counts.matchedCount, runId);
 
+    setProgress({
+      active: false,
+      stage: "Refresh complete",
+      detail: `${counts.channelCount} channels, ${counts.programCount.count} programs, ${counts.matchedCount} matched.`,
+      channelCount: counts.channelCount,
+      programCount: counts.programCount.count,
+      matchedCount: counts.matchedCount
+    });
     return { id: runId, status: "success", ...counts, programCount: counts.programCount.count };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     db.prepare(
       "UPDATE refresh_runs SET status = 'failed', finished_at = CURRENT_TIMESTAMP, error = ? WHERE id = ?"
     ).run(message, runId);
+    setProgress({
+      active: false,
+      stage: "Refresh failed",
+      detail: message,
+      error: message
+    });
     throw error;
   }
 }
