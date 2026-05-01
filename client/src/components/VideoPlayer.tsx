@@ -28,10 +28,10 @@ export function VideoPlayer({ src, title }: { src: string; title: string }) {
 
   if (mobile) {
     return (
-      <div className="grid min-h-64 place-items-center rounded-md border border-line bg-ink p-6 text-center text-white">
+      <div className="grid min-h-64 place-items-center rounded-md border border-line bg-black p-6 text-center text-white">
         <div>
           <Play className="mx-auto mb-4" size={34} />
-          <a className="inline-flex min-h-11 items-center gap-2 rounded-md bg-white px-4 font-semibold text-ink" href={src}>
+          <a className="inline-flex min-h-11 items-center gap-2 rounded-md bg-accent px-4 font-semibold text-white" href={src}>
             Open stream <ExternalLink size={18} />
           </a>
         </div>

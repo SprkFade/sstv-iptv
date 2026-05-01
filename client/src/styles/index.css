@@ -8,12 +8,33 @@
 @tailwind utilities;
 
 :root {
-  color: #101317;
-  background: #f5f7fa;
+  --color-ink: 226 232 240;
+  --color-mist: 10 14 20;
+  --color-panel: 17 24 39;
+  --color-line: 51 65 85;
+  color: rgb(var(--color-ink));
+  background: rgb(var(--color-mist));
+  color-scheme: dark;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:root.dark {
+  --color-ink: 226 232 240;
+  --color-mist: 10 14 20;
+  --color-panel: 17 24 39;
+  --color-line: 51 65 85;
+  color-scheme: dark;
+}
+
+:root.light {
+  --color-ink: 16 19 23;
+  --color-mist: 245 247 250;
+  --color-panel: 255 255 255;
+  --color-line: 220 227 234;
+  color-scheme: light;
 }
 
 html,
@@ -22,8 +43,14 @@ body,
   min-height: 100%;
 }
 
+html {
+  background: rgb(var(--color-mist));
+}
+
 body {
   margin: 0;
+  background: rgb(var(--color-mist));
+  color: rgb(var(--color-ink));
 }
 
 button,
@@ -31,6 +58,13 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+input,
+textarea,
+select {
+  background: rgb(var(--color-panel));
+  color: rgb(var(--color-ink));
 }
 
 .scrollbar-none {

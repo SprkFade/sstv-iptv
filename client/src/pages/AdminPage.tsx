@@ -27,16 +27,16 @@ export function AdminPage() {
     load().catch((err) => setError(err instanceof Error ? err.message : "Unable to load admin data"));
   }, []);
 
-  if (!settings) return <div className="text-sm text-slate-500">Loading admin...</div>;
+  if (!settings) return <div className="text-sm text-ink/60">Loading admin...</div>;
 
   return (
     <div className="grid gap-4">
-      <section className="rounded-md border border-line bg-white p-4 shadow-soft">
+      <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
         <div className="mb-4 flex items-center gap-3">
           <span className="grid size-11 place-items-center rounded-md bg-accent text-white"><Database /></span>
           <div>
             <h1 className="text-2xl font-bold">Admin</h1>
-            <p className="text-sm text-slate-500">Playlist, XMLTV, refresh, and Plex status</p>
+            <p className="text-sm text-ink/60">Playlist, XMLTV, refresh, and Plex status</p>
           </div>
         </div>
         {message && <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>}
@@ -80,7 +80,7 @@ export function AdminPage() {
             </button>
             <button
               type="button"
-              className="flex min-h-11 items-center gap-2 rounded-md bg-ink px-4 font-semibold text-white disabled:opacity-60"
+              className="flex min-h-11 items-center gap-2 rounded-md border border-line bg-panel px-4 font-semibold text-ink hover:bg-ink/5 disabled:opacity-60"
               disabled={refreshing}
               onClick={async () => {
                 setRefreshing(true);
@@ -105,28 +105,28 @@ export function AdminPage() {
       </section>
 
       <section className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-md border border-line bg-white p-4 shadow-soft">
+        <div className="rounded-md border border-line bg-panel p-4 shadow-soft">
           <Server className="mb-3 text-accent" />
-          <div className="text-sm text-slate-500">Plex server</div>
+          <div className="text-sm text-ink/60">Plex server</div>
           <div className="font-bold">{settings.plex.serverReachable ? "Reachable" : settings.plex.configured ? "Configured" : "Not configured"}</div>
         </div>
-        <div className="rounded-md border border-line bg-white p-4 shadow-soft">
+        <div className="rounded-md border border-line bg-panel p-4 shadow-soft">
           <Activity className="mb-3 text-gold" />
-          <div className="text-sm text-slate-500">Last refresh</div>
+          <div className="text-sm text-ink/60">Last refresh</div>
           <div className="font-bold">{runs[0]?.status ?? "None"}</div>
         </div>
-        <div className="rounded-md border border-line bg-white p-4 shadow-soft">
+        <div className="rounded-md border border-line bg-panel p-4 shadow-soft">
           <Users className="mb-3 text-berry" />
-          <div className="text-sm text-slate-500">Users</div>
+          <div className="text-sm text-ink/60">Users</div>
           <div className="font-bold">{users.length}</div>
         </div>
       </section>
 
-      <section className="rounded-md border border-line bg-white p-4 shadow-soft">
+      <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
         <h2 className="text-xl font-bold">Refresh runs</h2>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="border-b border-line text-slate-500">
+            <thead className="border-b border-line text-ink/60">
               <tr><th className="py-2">Status</th><th>Started</th><th>Channels</th><th>Programs</th><th>Matched</th><th>Error</th></tr>
             </thead>
             <tbody>

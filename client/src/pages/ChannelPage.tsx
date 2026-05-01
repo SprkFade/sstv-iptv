@@ -25,22 +25,22 @@ export function ChannelPage() {
   }, [id]);
 
   if (error) return <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>;
-  if (!channel) return <div className="text-sm text-slate-500">Loading channel...</div>;
+  if (!channel) return <div className="text-sm text-ink/60">Loading channel...</div>;
 
   const current = programs.find((program) => new Date(program.start_time) <= new Date() && new Date(program.end_time) > new Date());
 
   return (
     <div className="grid gap-4">
-      <Link to="/" className="inline-flex min-h-10 w-fit items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold">
+      <Link to="/" className="inline-flex min-h-10 w-fit items-center gap-2 rounded-md border border-line bg-panel px-3 text-sm font-semibold">
         <ArrowLeft size={17} /> Guide
       </Link>
-      <section className="rounded-md border border-line bg-white p-4 shadow-soft">
+      <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <ChannelLogo src={channel.logo_url} name={channel.display_name} size="lg" />
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-bold">{channel.display_name}</h1>
-              <p className="truncate text-sm text-slate-500">{channel.group_title}</p>
+              <p className="truncate text-sm text-ink/60">{channel.group_title}</p>
             </div>
           </div>
           <FavoriteButton
@@ -55,15 +55,15 @@ export function ChannelPage() {
         <VideoPlayer src={channel.stream_url} title={channel.display_name} />
         {current && (
           <div className="mt-4 rounded-md border border-line bg-mist p-4">
-            <div className="text-sm font-semibold text-slate-500">Now playing</div>
+            <div className="text-sm font-semibold text-ink/60">Now playing</div>
             <h2 className="mt-1 text-xl font-bold">{current.title}</h2>
-            <p className="mt-1 text-sm text-slate-600">{current.description}</p>
+            <p className="mt-1 text-sm text-ink/70">{current.description}</p>
             <ProgramBar start={current.start_time} end={current.end_time} />
           </div>
         )}
       </section>
 
-      <section className="rounded-md border border-line bg-white p-4 shadow-soft">
+      <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
         <h2 className="text-xl font-bold">Upcoming</h2>
         <div className="mt-3 grid gap-2">
           {programs.map((program) => (
@@ -71,9 +71,9 @@ export function ChannelPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="truncate font-semibold">{program.title}</h3>
-                  <p className="line-clamp-2 text-sm text-slate-600">{program.description || program.subtitle}</p>
+                  <p className="line-clamp-2 text-sm text-ink/70">{program.description || program.subtitle}</p>
                 </div>
-                <div className="shrink-0 text-right text-xs font-semibold text-slate-500">
+                <div className="shrink-0 text-right text-xs font-semibold text-ink/60">
                   {formatTime(program.start_time)}<br />{formatTime(program.end_time)}
                 </div>
               </div>

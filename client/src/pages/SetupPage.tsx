@@ -60,12 +60,12 @@ export function SetupPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <section className="rounded-md border border-line bg-white p-5 shadow-soft">
+      <section className="rounded-md border border-line bg-panel p-5 shadow-soft">
         <div className="mb-5 flex items-center gap-3">
           <span className="grid size-11 place-items-center rounded-md bg-accent text-white"><Tv /></span>
           <div>
             <h1 className="text-2xl font-bold">Launch setup</h1>
-            <p className="text-sm text-slate-500">Create the admin account, connect guide data, and choose your Plex server.</p>
+            <p className="text-sm text-ink/60">Create the admin account, connect guide data, and choose your Plex server.</p>
           </div>
         </div>
 
@@ -133,7 +133,7 @@ export function SetupPage() {
             <div className="mb-3 flex items-center gap-2 font-bold"><Server size={18} /> Plex</div>
             {!plexPin && !plexToken && (
               <button
-                className="flex min-h-11 items-center justify-center gap-2 rounded-md bg-ink px-4 font-semibold text-white"
+                className="flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-4 font-semibold text-white"
                 type="button"
                 onClick={async () => {
                   setError("");
@@ -151,10 +151,10 @@ export function SetupPage() {
             {plexPin && !plexToken && (
               <div className="grid gap-3">
                 <div className="rounded-md border border-line bg-mist p-4 text-center">
-                  <div className="text-sm text-slate-500">Plex code</div>
+                  <div className="text-sm text-ink/60">Plex code</div>
                   <div className="mt-1 text-4xl font-bold tracking-normal">{plexPin.code}</div>
                 </div>
-                <a className="flex min-h-11 items-center justify-center rounded-md bg-ink px-4 font-semibold text-white" href={plexPin.authUrl} target="_blank" rel="noreferrer">
+                <a className="flex min-h-11 items-center justify-center rounded-md bg-accent px-4 font-semibold text-white" href={plexPin.authUrl} target="_blank" rel="noreferrer">
                   Continue with Plex
                 </a>
               </div>
