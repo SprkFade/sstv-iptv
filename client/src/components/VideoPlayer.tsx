@@ -29,6 +29,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
   const mobile = typeof navigator !== "undefined" && isMobile();
   const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
   const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
+  const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8`, [channelId]);
   const hlsSrc = useMemo(() => isHlsSource(src) ? src : hlsCandidate(src), [src]);
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
 
     let hls: Hls | null = null;
     let tsPlayer: mpegts.Player | null = null;
+    let triedTranscodeHls = false;
     let triedTranscode = false;
     let triedHls = false;
     let triedProxy = false;
@@ -52,39 +54,53 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     const onVideoError = () => setPlaybackError("The browser could not decode this stream.");
     video.addEventListener("error", onVideoError);
 
-    const startHls = () => {
-      if (triedHls || disposed) return;
-      triedHls = true;
+    const playHls = (source: string, label: string, onFatal: () => void) => {
+      hls?.destroy();
+      hls = null;
       tsPlayer?.destroy();
       tsPlayer = null;
       setError("");
+
+      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = source;
+        return;
+      }
+
+      if (!Hls.isSupported()) {
+        onFatal();
+        return;
+      }
+
+      hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        liveSyncDurationCount: 3
+      });
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data.fatal) return;
+        console.warn(`${label} playback error`, data);
+        onFatal();
+      });
+      hls.loadSource(source);
+      hls.attachMedia(video);
+    };
+
+    const startProviderHls = () => {
+      if (triedHls || disposed) return;
+      triedHls = true;
 
       if (!hlsSrc) {
         startMpegTs("proxy");
         return;
       }
 
-      if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        video.src = hlsSrc;
-        return;
-      }
+      playHls(hlsSrc, "Provider HLS", () => startMpegTs("proxy"));
+    };
 
-      if (!Hls.isSupported()) {
-        startMpegTs("proxy");
-        return;
-      }
-
-      hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true
-      });
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (!data.fatal) return;
-        console.warn("HLS playback error", data);
-        startMpegTs("proxy");
-      });
-      hls.loadSource(hlsSrc);
-      hls.attachMedia(video);
+    const startTranscodedHls = () => {
+      if (triedTranscodeHls || disposed) return;
+      triedTranscodeHls = true;
+      playHls(transcodeHlsSrc, "FFmpeg HLS transcode", startProviderHls);
     };
 
     const startMpegTs = (mode: "transcode" | "proxy") => {
@@ -116,7 +132,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           tsPlayer.on(mpegts.Events.ERROR, (type, detail, info) => {
             console.warn(`${label} playback error`, { type, detail, info });
             if (mode === "transcode") {
-              startHls();
+              startProviderHls();
               return;
             }
             const suffix = [type, detail].filter(Boolean).join(": ");
@@ -127,7 +143,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           return;
         } catch (err) {
           if (mode === "transcode") {
-            startHls();
+            startProviderHls();
             return;
           }
           setPlaybackError(err instanceof Error ? err.message : "The MPEG-TS player failed to start.");
@@ -137,14 +153,14 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
       video.src = streamUrl;
     };
 
-    startMpegTs("transcode");
+    startTranscodedHls();
     return () => {
       disposed = true;
       hls?.destroy();
       tsPlayer?.destroy();
       video.removeEventListener("error", onVideoError);
     };
-  }, [hlsSrc, mobile, proxySrc, retryKey, transcodeSrc]);
+  }, [hlsSrc, mobile, proxySrc, retryKey, transcodeHlsSrc, transcodeSrc]);
 
   if (mobile) {
     return (
@@ -172,8 +188,11 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-black p-3 text-sm text-white">
           <span>{error}</span>
           <div className="flex flex-wrap gap-2">
+            <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={transcodeHlsSrc} target="_blank" rel="noreferrer">
+              HLS <ExternalLink size={16} />
+            </a>
             <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={transcodeSrc} target="_blank" rel="noreferrer">
-              Transcode <ExternalLink size={16} />
+              TS <ExternalLink size={16} />
             </a>
             <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={proxySrc} target="_blank" rel="noreferrer">
               Proxy <ExternalLink size={16} />
