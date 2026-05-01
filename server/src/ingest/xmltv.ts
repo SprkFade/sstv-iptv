@@ -6,7 +6,14 @@ const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
   textNodeName: "#text",
-  trimValues: true
+  trimValues: true,
+  processEntities: {
+    enabled: true,
+    maxEntitySize: 1024,
+    maxTotalExpansions: 1_000_000,
+    maxExpandedLength: 50_000_000,
+    maxEntityCount: 20
+  }
 });
 
 function arrayify<T>(value: T | T[] | undefined): T[] {
