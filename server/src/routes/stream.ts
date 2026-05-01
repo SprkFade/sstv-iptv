@@ -161,7 +161,8 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-avoid_negative_ts", "make_zero",
     "-f", "hls",
     "-hls_time", "2",
-    "-hls_list_size", "6",
+    "-hls_list_size", "18",
+    "-hls_delete_threshold", "12",
     "-hls_flags", "delete_segments+append_list+independent_segments+omit_endlist",
     "-hls_segment_filename", segmentPattern,
     "index.m3u8"

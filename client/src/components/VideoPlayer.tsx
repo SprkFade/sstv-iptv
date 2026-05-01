@@ -27,6 +27,8 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     let hls: Hls | null = null;
     let disposed = false;
     let hlsError = false;
+    let mediaRecoveries = 0;
+    let networkRecoveries = 0;
 
     const setPlaybackError = (message: string) => {
       if (!disposed) setError(message);
@@ -54,11 +56,25 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
 
     hls = new Hls({
       enableWorker: true,
-      lowLatencyMode: true,
-      liveSyncDurationCount: 3
+      lowLatencyMode: false,
+      liveSyncDurationCount: 5,
+      liveMaxLatencyDurationCount: 14,
+      maxLiveSyncPlaybackRate: 1.25
     });
     hls.on(Hls.Events.ERROR, (_event, data) => {
       if (!data.fatal) return;
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveries < 5) {
+        networkRecoveries += 1;
+        console.warn("Recovering FFmpeg HLS network error", data);
+        hls?.startLoad(-1);
+        return;
+      }
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 3) {
+        mediaRecoveries += 1;
+        console.warn("Recovering FFmpeg HLS media error", data);
+        hls?.recoverMediaError();
+        return;
+      }
       hlsError = true;
       console.warn("FFmpeg HLS playback error", data);
       const code = data.response?.code ? ` HTTP ${data.response.code}` : "";
