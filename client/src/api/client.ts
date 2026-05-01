@@ -42,7 +42,6 @@ export interface Airing {
   start_time: string | null;
   end_time: string | null;
   favorite: 0 | 1;
-  upcoming?: Program[];
 }
 
 export interface PlexServer {
