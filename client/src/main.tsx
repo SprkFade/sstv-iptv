@@ -23,7 +23,7 @@ function Protected({ children, admin = false }: { children: React.ReactNode; adm
 
 function RootPage() {
   const { user, setupRequired, loading } = useAuth();
-  if (loading) return <div className="grid min-h-screen place-items-center bg-mist text-sm text-ink/60">Loading SSTV IPTV...</div>;
+  if (loading) return <LoginPage />;
   if (setupRequired) return <Navigate to="/setup" replace />;
   if (!user) return <LoginPage />;
   return <HomePage />;

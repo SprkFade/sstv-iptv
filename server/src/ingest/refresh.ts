@@ -169,10 +169,11 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
       let savedChannelCount = 0;
       let savedProgramCount = 0;
       const ingestDb = openIngestDb();
-      ingestDb.prepare("BEGIN IMMEDIATE").run();
+      const xmltvToChannelId = new Map<string, number>();
+      const programRows: Array<[number, string, string, string, string, string, string]> = [];
       try {
+        ingestDb.prepare("BEGIN IMMEDIATE").run();
         ingestDb.prepare("UPDATE channels SET enabled = 0, updated_at = CURRENT_TIMESTAMP").run();
-        ingestDb.prepare("DELETE FROM programs").run();
 
         const findChannel = ingestDb.prepare(
           `SELECT id FROM channels
@@ -199,7 +200,6 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
          VALUES (?, ?, ?, ?, ?, ?, ?)`
         );
 
-        const xmltvToChannelId = new Map<string, number>();
         for (let index = 0; index < sourceChannels.length; index += 1) {
           const channel = sourceChannels[index];
           const xmltvMatch = matches.get(index);
@@ -233,11 +233,12 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
             await yieldToEventLoop();
           }
         }
+        ingestDb.prepare("COMMIT").run();
 
         const windowStart = new Date(Date.now() - GUIDE_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
         const windowEnd = new Date(Date.now() + GUIDE_LOOKAHEAD_HOURS * 60 * 60 * 1000).toISOString();
         setProgress({
-          stage: "Saving guide programs",
+          stage: "Scanning guide programs",
           detail: `Scanning XMLTV programs for matched channels through ${GUIDE_LOOKAHEAD_HOURS} hours ahead.`,
           totalProgramCount: 0,
           programCount: 0,
@@ -250,7 +251,7 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
           (program) => {
             const channelId = xmltvToChannelId.get(program.channelXmltvId);
             if (!channelId) return;
-            insertProgram.run(
+            programRows.push([
               channelId,
               program.title,
               program.subtitle,
@@ -258,7 +259,7 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
               program.category,
               program.startTime,
               program.endTime
-            );
+            ]);
             savedProgramCount += 1;
           },
           {
@@ -274,22 +275,38 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
             }
           }
         );
+
         setProgress({
-          detail: `Scanned ${programCounts.scanned} XMLTV programs, saved ${savedProgramCount} upcoming entries.`,
+          stage: "Saving guide programs",
+          detail: `Saving ${programRows.length} upcoming program entries.`,
           savedChannelCount,
           savedProgramCount,
           totalProgramCount: programCounts.scanned,
           programCount: savedProgramCount
         });
+
+        ingestDb.prepare("BEGIN IMMEDIATE").run();
+        ingestDb.prepare("DELETE FROM programs").run();
+        for (let index = 0; index < programRows.length; index += 1) {
+          insertProgram.run(...programRows[index]);
+          if ((index + 1) % 1000 === 0) {
+            setProgress({
+              detail: `Saved ${index + 1}/${programRows.length} upcoming program entries.`,
+              savedProgramCount: index + 1,
+              programCount: index + 1
+            });
+            await yieldToEventLoop();
+          }
+        }
         ingestDb.prepare("COMMIT").run();
 
         return {
           channelCount: sourceChannels.length,
-          programCount: { count: savedProgramCount },
+          programCount: { count: programRows.length },
           matchedCount
         };
       } catch (error) {
-        ingestDb.prepare("ROLLBACK").run();
+        if (ingestDb.inTransaction) ingestDb.prepare("ROLLBACK").run();
         throw error;
       } finally {
         ingestDb.close();

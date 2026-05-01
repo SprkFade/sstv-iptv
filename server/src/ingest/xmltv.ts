@@ -124,7 +124,7 @@ export async function parseSelectedXmltvPrograms(
       }
     }
 
-    if (scanned % 2000 === 0) {
+    if (scanned % 500 === 0) {
       options.onProgress?.({ scanned, saved });
       await yieldToEventLoop();
     }
