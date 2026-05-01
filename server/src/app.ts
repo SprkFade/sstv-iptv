@@ -12,6 +12,7 @@ import { setupRouter } from "./routes/setup.js";
 import { adminRouter } from "./routes/admin.js";
 import { dataRouter } from "./routes/data.js";
 import { favoritesRouter } from "./routes/favorites.js";
+import { streamRouter } from "./routes/stream.js";
 
 export function createApp() {
   const app = express();
@@ -35,6 +36,7 @@ export function createApp() {
   app.use("/api/setup", setupRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/admin", requireAdmin, adminRouter);
+  app.use("/api/stream", requireAuth, streamRouter);
   app.use("/api", requireAuth, dataRouter);
   app.use("/api/favorites", requireAuth, favoritesRouter);
 

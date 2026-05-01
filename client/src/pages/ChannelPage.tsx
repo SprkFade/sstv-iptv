@@ -52,7 +52,7 @@ export function ChannelPage() {
             }}
           />
         </div>
-        <VideoPlayer src={channel.stream_url} title={channel.display_name} />
+        <VideoPlayer channelId={channel.id} src={channel.stream_url} title={channel.display_name} />
         {current && (
           <div className="mt-4 rounded-md border border-line bg-mist p-4">
             <div className="text-sm font-semibold text-ink/60">Now playing</div>
