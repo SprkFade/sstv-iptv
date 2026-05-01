@@ -4,10 +4,12 @@ import { setting } from "../db/database.js";
 const plexBase = "https://plex.tv";
 
 function plexHeaders(token?: string) {
+  const productName = setting("plex_product_name", config.plexProductName);
+  const clientIdentifier = setting("plex_client_identifier", config.plexClientIdentifier);
   return {
     accept: "application/json",
-    "x-plex-product": config.plexProductName,
-    "x-plex-client-identifier": config.plexClientIdentifier,
+    "x-plex-product": productName,
+    "x-plex-client-identifier": clientIdentifier,
     ...(token ? { "x-plex-token": token } : {})
   };
 }
@@ -21,9 +23,9 @@ export async function createPlexPin() {
   const pin = (await response.json()) as { id: number; code: string };
   const authUrl = new URL("https://app.plex.tv/auth");
   authUrl.hash = new URLSearchParams({
-    clientID: config.plexClientIdentifier,
+    clientID: setting("plex_client_identifier", config.plexClientIdentifier),
     code: pin.code,
-    "context[device][product]": config.plexProductName
+    "context[device][product]": setting("plex_product_name", config.plexProductName)
   }).toString();
   return { id: pin.id, code: pin.code, authUrl: authUrl.toString() };
 }
@@ -51,28 +53,35 @@ export async function getPlexUser(token: string) {
 
 export async function verifyPlexServerAccess(userToken: string) {
   const serverIdentifier = setting("plex_server_identifier", config.plexServerIdentifier);
-  if (!serverIdentifier) throw new Error("PLEX_SERVER_IDENTIFIER is not configured.");
+  if (!serverIdentifier) throw new Error("Plex server is not configured.");
 
-  const resourcesResponse = await fetch(`${plexBase}/api/v2/resources?includeHttps=1`, {
-    headers: plexHeaders(userToken)
-  });
-  if (!resourcesResponse.ok) throw new Error("Unable to verify Plex server access.");
-  const resources = (await resourcesResponse.json()) as Array<{ clientIdentifier?: string; name?: string }>;
+  const resources = await getPlexResources(userToken);
   return resources.some((resource) => resource.clientIdentifier === serverIdentifier);
+}
+
+export async function getPlexResources(token: string) {
+  const resourcesResponse = await fetch(`${plexBase}/api/v2/resources?includeHttps=1`, {
+    headers: plexHeaders(token)
+  });
+  if (!resourcesResponse.ok) throw new Error("Unable to fetch Plex servers.");
+  return (await resourcesResponse.json()) as Array<{
+    name?: string;
+    product?: string;
+    clientIdentifier?: string;
+    provides?: string;
+    owned?: boolean;
+    accessToken?: string;
+  }>;
 }
 
 export async function plexAdminStatus() {
   const serverIdentifier = setting("plex_server_identifier", config.plexServerIdentifier);
-  if (!serverIdentifier || !config.plexToken) {
+  const plexToken = setting("plex_token", config.plexToken);
+  if (!serverIdentifier || !plexToken) {
     return { configured: Boolean(serverIdentifier), serverReachable: false };
   }
   try {
-    const resourcesResponse = await fetch(`${plexBase}/api/v2/resources?includeHttps=1`, {
-      headers: plexHeaders(config.plexToken)
-    });
-    const resources = resourcesResponse.ok
-      ? ((await resourcesResponse.json()) as Array<{ clientIdentifier?: string }>)
-      : [];
+    const resources = await getPlexResources(plexToken);
     return {
       configured: true,
       serverReachable: resources.some((resource) => resource.clientIdentifier === serverIdentifier)

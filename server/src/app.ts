@@ -8,6 +8,7 @@ import { ZodError } from "zod";
 import { config } from "./config.js";
 import { authMiddleware, requireAdmin, requireAuth } from "./auth/session.js";
 import { authRouter } from "./routes/auth.js";
+import { setupRouter } from "./routes/setup.js";
 import { adminRouter } from "./routes/admin.js";
 import { dataRouter } from "./routes/data.js";
 import { favoritesRouter } from "./routes/favorites.js";
@@ -31,6 +32,7 @@ export function createApp() {
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true });
   });
+  app.use("/api/setup", setupRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/admin", requireAdmin, adminRouter);
   app.use("/api", requireAuth, dataRouter);

@@ -6,7 +6,7 @@ A production-oriented, mobile-first IPTV guide that imports one M3U playlist and
 
 - M3U and XMLTV ingestion with channel matching by `tvg-id`, `tvg-name`, normalized name, then conservative fuzzy match.
 - Transaction-safe refreshes with run history, manual admin refresh, and scheduled refresh checks.
-- Admin login from environment variables.
+- First-launch setup wizard for admin credentials, guide URLs, refresh cadence, and Plex server selection.
 - Plex OAuth for regular users with configured server access validation.
 - Channel browsing, groups, current airing view, search, favorites, and channel playback.
 - Desktop HLS playback with `hls.js`; mobile opens streams natively.
@@ -45,8 +45,8 @@ Create bind-mount directories on the host first:
 mkdir -p data cache
 ```
 
-Then deploy with the same `.env` values from `.env.example`.
-The Portainer compose file includes an inline `environment` block, so you can paste it directly into a stack and set variables in Portainer.
+Then deploy with the runtime values from `.env.example`.
+The Portainer compose file includes a minimal inline `environment` block. App setup values are collected by the first-launch wizard in the browser.
 
 On Linux, if Docker-created files are owned by root:
 
@@ -56,23 +56,15 @@ sudo chown -R $USER:$USER data cache
 
 ## Configuration
 
-Edit `.env` before starting, or use the admin page after the first login.
+Edit `.env` before starting, then finish setup in the launch wizard.
 
-Required for guide imports:
+The launch wizard collects:
 
-- `M3U_URL`
-- `XMLTV_URL`
-
-Required for Plex user login:
-
-- `PLEX_SERVER_IDENTIFIER`
-- `PLEX_CLIENT_IDENTIFIER`
-- `PLEX_TOKEN` for admin status checks
-
-Admin login uses:
-
-- `ADMIN_USERNAME`
-- `ADMIN_PASSWORD`
+- admin username and password
+- M3U playlist URL
+- XMLTV guide URL
+- refresh interval
+- Plex login, server selection, and token storage
 
 Set a long random `SESSION_SECRET` before exposing the app.
 
@@ -96,6 +88,11 @@ The API runs on port `3025`; Vite runs on `5173` and proxies `/api`.
 
 ## API Summary
 
+- `GET /api/setup/status`
+- `GET /api/setup/defaults`
+- `POST /api/setup/plex/pin`
+- `GET /api/setup/plex/pin/:id`
+- `POST /api/setup/complete`
 - `POST /api/auth/admin/login`
 - `POST /api/auth/logout`
 - `GET /api/auth/me`

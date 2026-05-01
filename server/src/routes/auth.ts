@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { getDb } from "../db/database.js";
+import { getDb, isSetupComplete } from "../db/database.js";
 import { clearSession, createSession, requireAuth } from "../auth/session.js";
 import type { AuthedRequest } from "../types/app.js";
 import { createPlexPin, getPlexUser, pollPlexPin, verifyPlexServerAccess } from "../services/plex.js";
@@ -14,6 +14,7 @@ const adminLoginSchema = z.object({
 });
 
 authRouter.post("/admin/login", (req, res) => {
+  if (!isSetupComplete()) return res.status(409).json({ error: "Setup is required before login." });
   const body = adminLoginSchema.parse(req.body);
   const admin = getDb()
     .prepare("SELECT id, username, password_hash FROM users WHERE auth_provider = 'local' AND role = 'admin'")
@@ -33,11 +34,12 @@ authRouter.post("/logout", requireAuth, (req: AuthedRequest, res) => {
 });
 
 authRouter.get("/me", (req: AuthedRequest, res) => {
-  res.json({ user: req.user ?? null });
+  res.json({ user: req.user ?? null, setupRequired: !isSetupComplete() });
 });
 
 authRouter.post("/plex/pin", async (_req, res, next) => {
   try {
+    if (!isSetupComplete()) return res.status(409).json({ error: "Setup is required before Plex user login." });
     res.json(await createPlexPin());
   } catch (error) {
     next(error);
@@ -46,6 +48,7 @@ authRouter.post("/plex/pin", async (_req, res, next) => {
 
 authRouter.get("/plex/pin/:id", async (req, res, next) => {
   try {
+    if (!isSetupComplete()) return res.status(409).json({ error: "Setup is required before Plex user login." });
     const pin = await pollPlexPin(req.params.id);
     if (!pin.authToken) return res.json({ authenticated: false });
 

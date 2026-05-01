@@ -40,6 +40,13 @@ export interface Airing {
   favorite: 0 | 1;
 }
 
+export interface PlexServer {
+  name: string;
+  product: string;
+  clientIdentifier: string;
+  owned: boolean;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: "include",
@@ -58,7 +65,31 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  me: () => request<{ user: User | null }>("/api/auth/me"),
+  setupStatus: () => request<{ setupRequired: boolean }>("/api/setup/status"),
+  setupDefaults: () => request<{
+    m3uUrl: string;
+    xmltvUrl: string;
+    refreshIntervalHours: number;
+    plexProductName: string;
+  }>("/api/setup/defaults"),
+  createSetupPlexPin: () => request<{ id: number; code: string; authUrl: string }>("/api/setup/plex/pin", { method: "POST" }),
+  pollSetupPlexPin: (id: number) => request<{
+    authenticated: boolean;
+    token?: string;
+    user?: { id: number; username: string };
+    servers?: PlexServer[];
+  }>(`/api/setup/plex/pin/${id}`),
+  completeSetup: (body: {
+    adminUsername: string;
+    adminPassword: string;
+    m3uUrl: string;
+    xmltvUrl: string;
+    refreshIntervalHours: number;
+    plexToken?: string;
+    plexServerIdentifier?: string;
+    plexServerName?: string;
+  }) => request<{ ok: true }>("/api/setup/complete", { method: "POST", body: JSON.stringify(body) }),
+  me: () => request<{ user: User | null; setupRequired: boolean }>("/api/auth/me"),
   adminLogin: (username: string, password: string) =>
     request<{ ok: true }>("/api/auth/admin/login", {
       method: "POST",

@@ -26,7 +26,7 @@ export async function refreshGuide(overrides?: { m3uUrl?: string; xmltvUrl?: str
     const m3uUrl = overrides?.m3uUrl ?? setting("m3u_url");
     const xmltvUrl = overrides?.xmltvUrl ?? setting("xmltv_url");
     if (!m3uUrl || !xmltvUrl) {
-      throw new Error("M3U_URL and XMLTV_URL must be configured before refreshing.");
+      throw new Error("M3U and XMLTV URLs must be configured before refreshing.");
     }
 
     if (overrides?.m3uUrl) setSetting("m3u_url", overrides.m3uUrl);

@@ -7,20 +7,22 @@ import { LoginPage } from "./pages/LoginPage";
 import { ChannelPage } from "./pages/ChannelPage";
 import { FavoritesPage } from "./pages/FavoritesPage";
 import { AdminPage } from "./pages/AdminPage";
+import { SetupPage } from "./pages/SetupPage";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import "./styles/index.css";
 
 function Protected({ children, admin = false }: { children: React.ReactNode; admin?: boolean }) {
-  const { user, loading } = useAuth();
+  const { user, setupRequired, loading } = useAuth();
   const location = useLocation();
   if (loading) return <div className="grid min-h-screen place-items-center text-sm text-slate-500">Loading SSTV IPTV...</div>;
+  if (setupRequired) return <Navigate to="/setup" replace />;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (admin && user.role !== "admin") return <Navigate to="/" replace />;
   return children;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, setupRequired } = useAuth();
   const navigate = useNavigate();
   const itemClass = "flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-medium text-slate-700 hover:bg-white";
 
@@ -32,7 +34,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             <span className="grid size-9 place-items-center rounded-md bg-accent text-white"><Tv size={19} /></span>
             SSTV IPTV
           </Link>
-          {user && (
+          {user && !setupRequired && (
             <button
               className="grid size-10 place-items-center rounded-md text-slate-600 hover:bg-white"
               onClick={async () => {
@@ -47,7 +49,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-4 pb-24 pt-4 md:grid-cols-[210px_1fr] md:pb-6">
-        {user && (
+        {user && !setupRequired && (
           <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-white px-2 py-2 md:sticky md:top-[73px] md:block md:h-fit md:rounded-md md:border md:p-2 md:shadow-soft">
             <Link className={itemClass} to="/"><Home size={18} /> <span>Guide</span></Link>
             <Link className={itemClass} to="/favorites"><Heart size={18} /> <span>Favorites</span></Link>
@@ -78,6 +80,7 @@ function App() {
         <Shell>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/setup" element={<SetupPage />} />
             <Route path="/" element={<Protected><HomePage /></Protected>} />
             <Route path="/channel/:id" element={<Protected><ChannelPage /></Protected>} />
             <Route path="/favorites" element={<Protected><FavoritesPage /></Protected>} />

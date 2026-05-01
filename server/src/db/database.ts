@@ -1,5 +1,4 @@
 import Database from "better-sqlite3";
-import bcrypt from "bcryptjs";
 import { config, ensureRuntimeDirs } from "../config.js";
 
 let db: Database.Database | null = null;
@@ -97,7 +96,6 @@ export function migrate() {
   `);
 
   seedSettings();
-  upsertAdminUser();
 }
 
 function seedSettings() {
@@ -108,28 +106,10 @@ function seedSettings() {
   insert.run("xmltv_url", config.xmltvUrl);
   insert.run("refresh_interval_hours", String(config.refreshIntervalHours));
   insert.run("plex_server_identifier", config.plexServerIdentifier);
-}
-
-function upsertAdminUser() {
-  const passwordHash = bcrypt.hashSync(config.adminPassword, 12);
-  const existing = getDb()
-    .prepare("SELECT id FROM users WHERE auth_provider = 'local' AND role = 'admin' LIMIT 1")
-    .get() as { id: number } | undefined;
-
-  if (existing) {
-    getDb()
-      .prepare(
-        "UPDATE users SET username = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-      )
-      .run(config.adminUsername, passwordHash, existing.id);
-    return;
-  }
-
-  getDb()
-    .prepare(
-      "INSERT INTO users (username, role, auth_provider, password_hash) VALUES (?, 'admin', 'local', ?)"
-    )
-    .run(config.adminUsername, passwordHash);
+  insert.run("plex_token", config.plexToken);
+  insert.run("plex_product_name", config.plexProductName);
+  insert.run("plex_client_identifier", config.plexClientIdentifier);
+  insert.run("setup_complete", "false");
 }
 
 export function setting(key: string, fallback = "") {
@@ -147,4 +127,11 @@ export function setSetting(key: string, value: string) {
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`
     )
     .run(key, value);
+}
+
+export function isSetupComplete() {
+  const row = getDb()
+    .prepare("SELECT id FROM users WHERE auth_provider = 'local' AND role = 'admin' LIMIT 1")
+    .get() as { id: number } | undefined;
+  return setting("setup_complete") === "true" && Boolean(row);
 }

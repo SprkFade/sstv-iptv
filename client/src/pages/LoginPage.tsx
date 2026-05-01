@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
 export function LoginPage() {
-  const { user, refreshUser } = useAuth();
+  const { user, setupRequired, refreshUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [username, setUsername] = useState("admin");
@@ -15,8 +15,9 @@ export function LoginPage() {
   const from = (location.state as { from?: string } | null)?.from ?? "/";
 
   useEffect(() => {
+    if (setupRequired) navigate("/setup", { replace: true });
     if (user) navigate(from, { replace: true });
-  }, [user, navigate, from]);
+  }, [setupRequired, user, navigate, from]);
 
   useEffect(() => {
     if (!plexPin) return;
