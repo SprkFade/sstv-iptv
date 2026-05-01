@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { Heart, Home, LogOut, Moon, Search, Settings, Star, Sun, Tv } from "lucide-react";
+import { Heart, LogOut, Moon, Search, Settings, Star, Sun, Tv } from "lucide-react";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ChannelPage } from "./pages/ChannelPage";
@@ -32,11 +32,21 @@ function RootPage() {
 function Shell({ children }: { children: React.ReactNode }) {
   const { user, logout, setupRequired } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     return window.localStorage.getItem("sstv-theme") === "light" ? "light" : "dark";
   });
   const navUser = user && !setupRequired ? user : null;
-  const itemClass = "flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-medium text-ink/80 hover:bg-ink/5";
+  const navItems = [
+    { to: "/", label: "Guide", icon: Tv, match: location.pathname === "/" },
+    { to: "/favorites", label: "Favorites", icon: Heart, match: location.pathname === "/favorites" },
+    { to: "/?focus=search", label: "Search", icon: Search, match: location.search.includes("focus=search") },
+    ...(navUser?.role === "admin" ? [{ to: "/admin", label: "Admin", icon: Settings, match: location.pathname === "/admin" }] : [])
+  ];
+  const itemClass = (active: boolean) =>
+    `flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium transition ${
+      active ? "bg-accent text-white shadow-sm" : "text-ink/70 hover:bg-ink/5 hover:text-ink"
+    }`;
 
   useEffect(() => {
     document.documentElement.classList.remove("dark", "light");
@@ -45,53 +55,55 @@ function Shell({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem("sstv-theme", theme);
   }, [theme]);
 
+  if (!navUser) {
+    return <div className="min-h-screen bg-mist text-ink">{children}</div>;
+  }
+
   return (
     <div className="min-h-screen bg-mist text-ink">
-      <header className="sticky top-0 z-20 border-b border-line bg-mist/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3">
-          <Link to="/" className="flex items-center gap-2 text-base font-bold">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-white">
-              <Tv size={19} strokeWidth={2.2} className="block" />
+      <div className="grid min-h-screen grid-cols-1 md:grid-cols-[15rem_minmax(0,1fr)]">
+        <aside className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-panel/95 px-2 py-2 backdrop-blur md:sticky md:inset-y-0 md:top-0 md:flex md:h-screen md:flex-col md:border-r md:border-t-0 md:px-3 md:py-4">
+          <Link to="/" className="mb-6 hidden items-center gap-2 px-2 text-base font-bold md:flex">
+            <span className="grid size-8 place-items-center rounded-md border border-accent/40 bg-accent/15 text-accent">
+              <Tv size={18} strokeWidth={2.2} />
             </span>
             SSTV IPTV
           </Link>
-          <div className="flex items-center gap-2">
+          <nav className="grid grid-cols-4 gap-1 md:block md:space-y-1">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link key={item.label} className={itemClass(item.match)} to={item.to}>
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+            {navUser.role !== "admin" && (
+              <span className={itemClass(false)}><Star size={18} /> <span>{navUser.username}</span></span>
+            )}
+          </nav>
+          <div className="mt-auto hidden space-y-2 md:block">
             <button
-              className="grid size-10 place-items-center rounded-md border border-line bg-panel text-ink hover:bg-ink/5"
+              className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-ink/70 hover:bg-ink/5 hover:text-ink"
               onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
-              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             >
-              {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
+              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+              {theme === "dark" ? "Light mode" : "Dark mode"}
             </button>
-            {navUser && (
             <button
-              className="grid size-10 place-items-center rounded-md border border-line bg-panel text-ink hover:bg-ink/5"
+              className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-ink/70 hover:bg-ink/5 hover:text-ink"
               onClick={async () => {
                 await logout();
                 navigate("/");
               }}
-              title="Log out"
             >
-              <LogOut size={19} />
+              <LogOut size={18} />
+              Logout
             </button>
-            )}
           </div>
-        </div>
-      </header>
-      <div className={`mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 pt-4 ${navUser ? "pb-24 md:grid-cols-[220px_minmax(0,1fr)] md:pb-6" : "pb-6"}`}>
-        {navUser && (
-          <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-panel px-2 py-2 md:sticky md:top-[73px] md:block md:h-fit md:rounded-md md:border md:p-2 md:shadow-soft">
-            <Link className={itemClass} to="/"><Home size={18} /> <span>Guide</span></Link>
-            <Link className={itemClass} to="/favorites"><Heart size={18} /> <span>Favorites</span></Link>
-            <Link className={itemClass} to="/?focus=search"><Search size={18} /> <span>Search</span></Link>
-            {navUser.role === "admin" ? (
-              <Link className={itemClass} to="/admin"><Settings size={18} /> <span>Admin</span></Link>
-            ) : (
-              <span className={itemClass}><Star size={18} /> <span>{navUser.username}</span></span>
-            )}
-          </nav>
-        )}
-        <main className="min-w-0">{children}</main>
+        </aside>
+        <main className="min-w-0 px-3 py-3 pb-24 md:px-5 md:py-5 md:pb-5">{children}</main>
       </div>
     </div>
   );

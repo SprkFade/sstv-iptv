@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { KeyRound, Shield, Tv } from "lucide-react";
+import { KeyRound, Tv } from "lucide-react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -48,13 +48,16 @@ export function LoginPage() {
   }, [plexPin]);
 
   return (
-    <div className="mx-auto grid max-w-5xl gap-4 md:grid-cols-[1fr_1fr]">
-      <section className="rounded-md border border-line bg-panel p-5 shadow-soft">
-        <div className="mb-6 flex items-center gap-3">
-          <span className="grid size-11 place-items-center rounded-md bg-accent text-white"><Shield /></span>
+    <div className="relative grid min-h-screen place-items-center overflow-hidden px-4 py-10">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_30%,rgba(79,70,229,0.24),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.95),rgba(2,6,23,0.98))]" />
+      <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/45 to-transparent" />
+      <div className="relative grid w-full max-w-5xl gap-4 md:grid-cols-[1fr_1fr]">
+      <section className="rounded-md border border-white/10 bg-panel/85 p-5 shadow-soft backdrop-blur">
+        <div className="mb-6 grid justify-items-center gap-3 text-center">
+          <span className="grid size-12 place-items-center rounded-md border border-accent/40 bg-accent/15 text-accent"><Tv /></span>
           <div>
-            <h1 className="text-2xl font-bold">Sign in</h1>
-            <p className="text-sm text-ink/60">Admin uses local credentials. Viewers use Plex.</p>
+            <h1 className="text-2xl font-bold">SSTV IPTV</h1>
+            <p className="mt-1 text-sm text-ink/60">Your TV. Your way.</p>
           </div>
         </div>
         {error && <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
@@ -74,19 +77,19 @@ export function LoginPage() {
         >
           <label className="grid gap-1 text-sm font-medium">
             Username
-            <input className="min-h-11 rounded-md border border-line px-3" value={username} onChange={(event) => setUsername(event.target.value)} />
+            <input className="min-h-11 rounded-md border border-line bg-mist/60 px-3" value={username} onChange={(event) => setUsername(event.target.value)} />
           </label>
           <label className="grid gap-1 text-sm font-medium">
             Password
-            <input className="min-h-11 rounded-md border border-line px-3" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            <input className="min-h-11 rounded-md border border-line bg-mist/60 px-3" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
           </label>
-          <button className="mt-2 flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-4 font-semibold text-white">
+          <button className="mt-2 flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-4 font-semibold text-white shadow-sm">
             <KeyRound size={18} /> Admin login
           </button>
         </form>
       </section>
 
-      <section className="rounded-md border border-line bg-panel p-5 shadow-soft">
+      <section className="rounded-md border border-white/10 bg-panel/85 p-5 shadow-soft backdrop-blur">
         <div className="mb-6 flex items-center gap-3">
           <span className="grid size-11 place-items-center rounded-md bg-berry text-white"><Tv /></span>
           <div>
@@ -128,6 +131,7 @@ export function LoginPage() {
           </button>
         )}
       </section>
+      </div>
     </div>
   );
 }
