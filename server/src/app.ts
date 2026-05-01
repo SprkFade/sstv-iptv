@@ -31,7 +31,7 @@ export function createApp() {
   app.use(authMiddleware);
 
   app.get("/api/health", (_req, res) => {
-    res.json({ ok: true, build: process.env.APP_BUILD ?? "dev" });
+    res.json({ ok: true });
   });
   app.use("/api/setup", setupRouter);
   app.use("/api/auth", authRouter);
@@ -41,16 +41,9 @@ export function createApp() {
   app.use("/api/favorites", requireAuth, favoritesRouter);
 
   app.use(express.static(config.clientDistPath, {
-    maxAge: config.nodeEnv === "production" ? "1h" : 0,
-    setHeaders: (res, filePath) => {
-      const fileName = path.basename(filePath);
-      if (fileName === "index.html" || fileName === "sw.js" || fileName === "manifest.webmanifest") {
-        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      }
-    }
+    maxAge: config.nodeEnv === "production" ? "1h" : 0
   }));
   app.get(/.*/, (_req, res) => {
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.sendFile(path.join(config.clientDistPath, "index.html"));
   });
 

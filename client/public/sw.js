@@ -1,4 +1,4 @@
-const CACHE_NAME = "sstv-iptv-shell-v3";
+const CACHE_NAME = "sstv-iptv-shell-v2";
 const SHELL = ["/manifest.webmanifest", "/icons/icon.svg"];
 const APP_SHELL = "/";
 
@@ -29,19 +29,6 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() => caches.match(APP_SHELL))
-    );
-    return;
-  }
-
-  if (url.pathname === "/sw.js" || url.pathname.startsWith("/assets/")) {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          return response;
-        })
-        .catch(() => caches.match(event.request))
     );
     return;
   }
