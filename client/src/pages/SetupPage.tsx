@@ -9,7 +9,9 @@ export function SetupPage() {
   const { setupRequired, loading, refreshUser } = useAuth();
   const [adminUsername, setAdminUsername] = useState("admin");
   const [adminPassword, setAdminPassword] = useState("");
-  const [m3uUrl, setM3uUrl] = useState("");
+  const [xcBaseUrl, setXcBaseUrl] = useState("");
+  const [xcUsername, setXcUsername] = useState("");
+  const [xcPassword, setXcPassword] = useState("");
   const [xmltvUrl, setXmltvUrl] = useState("");
   const [refreshIntervalHours, setRefreshIntervalHours] = useState(12);
   const [plexPin, setPlexPin] = useState<{ id: number; code: string; authUrl: string } | null>(null);
@@ -27,7 +29,8 @@ export function SetupPage() {
   useEffect(() => {
     api.setupDefaults()
       .then((defaults) => {
-        setM3uUrl(defaults.m3uUrl);
+        setXcBaseUrl(defaults.xcBaseUrl);
+        setXcUsername(defaults.xcUsername);
         setXmltvUrl(defaults.xmltvUrl);
         setRefreshIntervalHours(defaults.refreshIntervalHours);
       })
@@ -78,7 +81,9 @@ export function SetupPage() {
               await api.completeSetup({
                 adminUsername,
                 adminPassword,
-                m3uUrl,
+                xcBaseUrl,
+                xcUsername,
+                xcPassword,
                 xmltvUrl,
                 refreshIntervalHours,
                 plexToken,
@@ -109,14 +114,24 @@ export function SetupPage() {
           </div>
 
           <div className="rounded-md border border-line p-4">
-            <div className="mb-3 flex items-center gap-2 font-bold"><LinkIcon size={18} /> Guide sources</div>
+            <div className="mb-3 flex items-center gap-2 font-bold"><LinkIcon size={18} /> XtremeCodes source</div>
             <div className="grid gap-3">
               <label className="grid gap-1 text-sm font-medium">
-                M3U playlist URL
-                <input className="min-h-11 rounded-md border border-line px-3" value={m3uUrl} onChange={(event) => setM3uUrl(event.target.value)} />
+                Server URL
+                <input className="min-h-11 rounded-md border border-line px-3" placeholder="http://provider.example:8080" value={xcBaseUrl} onChange={(event) => setXcBaseUrl(event.target.value)} />
               </label>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="grid gap-1 text-sm font-medium">
+                  XC username
+                  <input className="min-h-11 rounded-md border border-line px-3" value={xcUsername} onChange={(event) => setXcUsername(event.target.value)} />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  XC password
+                  <input className="min-h-11 rounded-md border border-line px-3" type="password" value={xcPassword} onChange={(event) => setXcPassword(event.target.value)} />
+                </label>
+              </div>
               <label className="grid gap-1 text-sm font-medium">
-                XMLTV guide URL
+                XMLTV guide URL (optional)
                 <input className="min-h-11 rounded-md border border-line px-3" value={xmltvUrl} onChange={(event) => setXmltvUrl(event.target.value)} />
               </label>
               <label className="grid gap-1 text-sm font-medium md:w-64">

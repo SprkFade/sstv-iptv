@@ -1,12 +1,12 @@
 # SSTV IPTV
 
-A production-oriented, mobile-first IPTV guide that imports one M3U playlist and one XMLTV guide, stores normalized data in SQLite, and serves a React PWA from an Express API.
+A production-oriented, mobile-first IPTV guide that imports live channels from an XtremeCodes login, pairs them with XMLTV guide data, stores normalized data in SQLite, and serves a React PWA from an Express API.
 
 ## Features
 
-- M3U and XMLTV ingestion with channel matching by `tvg-id`, `tvg-name`, normalized name, then conservative fuzzy match.
+- XtremeCodes and XMLTV ingestion with channel matching by EPG id, channel name, normalized name, then conservative fuzzy match.
 - Transaction-safe refreshes with run history, manual admin refresh, and scheduled refresh checks.
-- First-launch setup wizard for admin credentials, guide URLs, refresh cadence, and Plex server selection.
+- First-launch setup wizard for admin credentials, XtremeCodes login, guide settings, refresh cadence, and Plex server selection.
 - Plex OAuth for regular users with configured server access validation.
 - Channel browsing, groups, current airing view, search, favorites, and channel playback.
 - Desktop HLS playback with `hls.js`; mobile opens streams natively.
@@ -61,8 +61,8 @@ Edit `.env` before starting, then finish setup in the launch wizard.
 The launch wizard collects:
 
 - admin username and password
-- M3U playlist URL
-- XMLTV guide URL
+- XtremeCodes server URL, username, and password
+- XMLTV guide URL, optional; blank uses the XtremeCodes XMLTV endpoint
 - refresh interval
 - Plex login, server selection, and token storage
 

@@ -9,7 +9,9 @@ export const adminRouter = Router();
 adminRouter.get("/settings", async (_req, res, next) => {
   try {
     res.json({
-      m3uUrl: setting("m3u_url"),
+      xcBaseUrl: setting("xc_base_url"),
+      xcUsername: setting("xc_username"),
+      xcPasswordSet: Boolean(setting("xc_password")),
       xmltvUrl: setting("xmltv_url"),
       refreshIntervalHours: Number(setting("refresh_interval_hours", "12")),
       plexServerIdentifier: setting("plex_server_identifier"),
@@ -21,7 +23,9 @@ adminRouter.get("/settings", async (_req, res, next) => {
 });
 
 const settingsSchema = z.object({
-  m3uUrl: z.string().url().or(z.literal("")),
+  xcBaseUrl: z.string().url().or(z.literal("")),
+  xcUsername: z.string().max(200).optional().default(""),
+  xcPassword: z.string().max(500).optional().default(""),
   xmltvUrl: z.string().url().or(z.literal("")),
   refreshIntervalHours: z.number().int().min(1).max(168),
   plexServerIdentifier: z.string().optional().default("")
@@ -29,7 +33,9 @@ const settingsSchema = z.object({
 
 adminRouter.put("/settings", (req, res) => {
   const body = settingsSchema.parse(req.body);
-  setSetting("m3u_url", body.m3uUrl);
+  setSetting("xc_base_url", body.xcBaseUrl);
+  setSetting("xc_username", body.xcUsername);
+  if (body.xcPassword) setSetting("xc_password", body.xcPassword);
   setSetting("xmltv_url", body.xmltvUrl);
   setSetting("refresh_interval_hours", String(body.refreshIntervalHours));
   setSetting("plex_server_identifier", body.plexServerIdentifier);

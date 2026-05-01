@@ -1,21 +1,29 @@
 import { getDb, setting, setSetting } from "../db/database.js";
-import { parseM3u } from "./m3u.js";
 import { parseXmltv } from "./xmltv.js";
 import { matchChannels } from "./match.js";
+import { fetchXcChannels, xcXmltvUrl, type XcCredentials } from "./xc.js";
 
-async function fetchText(url: string) {
+async function fetchText(url: string, label: string) {
   const response = await fetch(url, {
     headers: {
       "user-agent": "SSTV IPTV/1.0"
     }
   });
   if (!response.ok) {
-    throw new Error(`Fetch failed for ${url}: ${response.status} ${response.statusText}`);
+    throw new Error(`Fetch failed for ${label}: ${response.status} ${response.statusText}`);
   }
   return response.text();
 }
 
-export async function refreshGuide(overrides?: { m3uUrl?: string; xmltvUrl?: string }) {
+function currentXcCredentials(overrides?: Partial<XcCredentials>) {
+  return {
+    baseUrl: overrides?.baseUrl ?? setting("xc_base_url"),
+    username: overrides?.username ?? setting("xc_username"),
+    password: overrides?.password ?? setting("xc_password")
+  };
+}
+
+export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvUrl?: string }) {
   const db = getDb();
   const run = db
     .prepare("INSERT INTO refresh_runs (status) VALUES ('running')")
@@ -23,19 +31,24 @@ export async function refreshGuide(overrides?: { m3uUrl?: string; xmltvUrl?: str
   const runId = Number(run.lastInsertRowid);
 
   try {
-    const m3uUrl = overrides?.m3uUrl ?? setting("m3u_url");
-    const xmltvUrl = overrides?.xmltvUrl ?? setting("xmltv_url");
-    if (!m3uUrl || !xmltvUrl) {
-      throw new Error("M3U and XMLTV URLs must be configured before refreshing.");
+    const xcCredentials = currentXcCredentials(overrides);
+    if (!xcCredentials.baseUrl || !xcCredentials.username || !xcCredentials.password) {
+      throw new Error("XtremeCodes server URL, username, and password must be configured before refreshing.");
     }
+    const configuredXmltvUrl = overrides?.xmltvUrl ?? setting("xmltv_url");
+    const xmltvUrl = configuredXmltvUrl || xcXmltvUrl(xcCredentials);
 
-    if (overrides?.m3uUrl) setSetting("m3u_url", overrides.m3uUrl);
+    if (overrides?.baseUrl) setSetting("xc_base_url", overrides.baseUrl);
+    if (overrides?.username) setSetting("xc_username", overrides.username);
+    if (overrides?.password) setSetting("xc_password", overrides.password);
     if (overrides?.xmltvUrl) setSetting("xmltv_url", overrides.xmltvUrl);
 
-    const [m3uText, xmltvText] = await Promise.all([fetchText(m3uUrl), fetchText(xmltvUrl)]);
-    const m3uChannels = parseM3u(m3uText);
+    const [sourceChannels, xmltvText] = await Promise.all([
+      fetchXcChannels(xcCredentials),
+      fetchText(xmltvUrl, "XMLTV guide")
+    ]);
     const xmltv = parseXmltv(xmltvText);
-    const { matches, matchedCount } = matchChannels(m3uChannels, xmltv.channels);
+    const { matches, matchedCount } = matchChannels(sourceChannels, xmltv.channels);
 
     const applyRefresh = db.transaction(() => {
       db.prepare("UPDATE channels SET enabled = 0, updated_at = CURRENT_TIMESTAMP").run();
@@ -66,7 +79,7 @@ export async function refreshGuide(overrides?: { m3uUrl?: string; xmltvUrl?: str
       );
 
       const xmltvToChannelId = new Map<string, number>();
-      m3uChannels.forEach((channel, index) => {
+      sourceChannels.forEach((channel, index) => {
         const xmltvMatch = matches.get(index);
         const existing = findChannel.get(channel.tvgId, channel.streamUrl, channel.tvgId) as
           | { id: number }
@@ -104,7 +117,7 @@ export async function refreshGuide(overrides?: { m3uUrl?: string; xmltvUrl?: str
       }
 
       return {
-        channelCount: m3uChannels.length,
+        channelCount: sourceChannels.length,
         programCount: db.prepare("SELECT COUNT(*) AS count FROM programs").get() as { count: number },
         matchedCount
       };

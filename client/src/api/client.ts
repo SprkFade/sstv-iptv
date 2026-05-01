@@ -67,7 +67,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   setupStatus: () => request<{ setupRequired: boolean }>("/api/setup/status"),
   setupDefaults: () => request<{
-    m3uUrl: string;
+    xcBaseUrl: string;
+    xcUsername: string;
     xmltvUrl: string;
     refreshIntervalHours: number;
     plexProductName: string;
@@ -82,7 +83,9 @@ export const api = {
   completeSetup: (body: {
     adminUsername: string;
     adminPassword: string;
-    m3uUrl: string;
+    xcBaseUrl: string;
+    xcUsername: string;
+    xcPassword: string;
     xmltvUrl: string;
     refreshIntervalHours: number;
     plexToken?: string;
@@ -106,13 +109,15 @@ export const api = {
   addFavorite: (id: number) => request<{ ok: true }>(`/api/favorites/${id}`, { method: "POST" }),
   removeFavorite: (id: number) => request<{ ok: true }>(`/api/favorites/${id}`, { method: "DELETE" }),
   settings: () => request<{
-    m3uUrl: string;
+    xcBaseUrl: string;
+    xcUsername: string;
+    xcPasswordSet: boolean;
     xmltvUrl: string;
     refreshIntervalHours: number;
     plexServerIdentifier: string;
     plex: { configured: boolean; serverReachable: boolean };
   }>("/api/admin/settings"),
-  saveSettings: (body: { m3uUrl: string; xmltvUrl: string; refreshIntervalHours: number; plexServerIdentifier: string }) =>
+  saveSettings: (body: { xcBaseUrl: string; xcUsername: string; xcPassword?: string; xmltvUrl: string; refreshIntervalHours: number; plexServerIdentifier: string }) =>
     request<{ ok: true }>("/api/admin/settings", { method: "PUT", body: JSON.stringify(body) }),
   refresh: () => request<{ id: number; status: string; channelCount: number; programCount: number; matchedCount: number }>("/api/admin/refresh", { method: "POST" }),
   refreshRuns: () => request<{ runs: Array<Record<string, string | number | null>> }>("/api/admin/refresh-runs"),

@@ -19,7 +19,8 @@ setupRouter.get("/status", (_req, res) => {
 
 setupRouter.get("/defaults", guardSetup, (_req, res) => {
   res.json({
-    m3uUrl: setting("m3u_url"),
+    xcBaseUrl: setting("xc_base_url"),
+    xcUsername: setting("xc_username"),
     xmltvUrl: setting("xmltv_url"),
     refreshIntervalHours: Number(setting("refresh_interval_hours", "12")),
     plexProductName: setting("plex_product_name", "SSTV IPTV")
@@ -71,8 +72,10 @@ setupRouter.get("/plex/pin/:id", guardSetup, async (req, res, next) => {
 const completeSchema = z.object({
   adminUsername: z.string().min(3).max(80),
   adminPassword: z.string().min(8).max(200),
-  m3uUrl: z.string().url(),
-  xmltvUrl: z.string().url(),
+  xcBaseUrl: z.string().url(),
+  xcUsername: z.string().min(1).max(200),
+  xcPassword: z.string().min(1).max(500),
+  xmltvUrl: z.string().url().or(z.literal("")),
   refreshIntervalHours: z.number().int().min(1).max(168),
   plexToken: z.string().optional().default(""),
   plexServerIdentifier: z.string().optional().default(""),
@@ -107,7 +110,9 @@ setupRouter.post("/complete", guardSetup, async (req, res, next) => {
           .prepare("INSERT INTO users (username, role, auth_provider, password_hash) VALUES (?, 'admin', 'local', ?)")
           .run(body.adminUsername, passwordHash).lastInsertRowid);
 
-      setSetting("m3u_url", body.m3uUrl);
+      setSetting("xc_base_url", body.xcBaseUrl);
+      setSetting("xc_username", body.xcUsername);
+      setSetting("xc_password", body.xcPassword);
       setSetting("xmltv_url", body.xmltvUrl);
       setSetting("refresh_interval_hours", String(body.refreshIntervalHours));
       setSetting("plex_token", body.plexToken);

@@ -11,6 +11,7 @@ export function AdminPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [xcPassword, setXcPassword] = useState("");
 
   const load = async () => {
     const [settingsResponse, runResponse, userResponse] = await Promise.all([
@@ -36,7 +37,7 @@ export function AdminPage() {
           <span className="grid size-11 place-items-center rounded-md bg-accent text-white"><Database /></span>
           <div>
             <h1 className="text-2xl font-bold">Admin</h1>
-            <p className="text-sm text-ink/60">Playlist, XMLTV, refresh, and Plex status</p>
+            <p className="text-sm text-ink/60">XtremeCodes, XMLTV, refresh, and Plex status</p>
           </div>
         </div>
         {message && <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>}
@@ -48,7 +49,8 @@ export function AdminPage() {
             setMessage("");
             setError("");
             try {
-              await api.saveSettings(settings);
+              await api.saveSettings({ ...settings, xcPassword });
+              setXcPassword("");
               setMessage("Settings saved.");
               await load();
             } catch (err) {
@@ -57,11 +59,21 @@ export function AdminPage() {
           }}
         >
           <label className="grid gap-1 text-sm font-medium">
-            M3U URL
-            <input className="min-h-11 rounded-md border border-line px-3" value={settings.m3uUrl} onChange={(event) => setSettings({ ...settings, m3uUrl: event.target.value })} />
+            XtremeCodes server URL
+            <input className="min-h-11 rounded-md border border-line px-3" value={settings.xcBaseUrl} onChange={(event) => setSettings({ ...settings, xcBaseUrl: event.target.value })} />
           </label>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="grid gap-1 text-sm font-medium">
+              XC username
+              <input className="min-h-11 rounded-md border border-line px-3" value={settings.xcUsername} onChange={(event) => setSettings({ ...settings, xcUsername: event.target.value })} />
+            </label>
+            <label className="grid gap-1 text-sm font-medium">
+              XC password
+              <input className="min-h-11 rounded-md border border-line px-3" type="password" placeholder={settings.xcPasswordSet ? "Leave blank to keep current password" : ""} value={xcPassword} onChange={(event) => setXcPassword(event.target.value)} />
+            </label>
+          </div>
           <label className="grid gap-1 text-sm font-medium">
-            XMLTV URL
+            XMLTV URL (optional)
             <input className="min-h-11 rounded-md border border-line px-3" value={settings.xmltvUrl} onChange={(event) => setSettings({ ...settings, xmltvUrl: event.target.value })} />
           </label>
           <div className="grid gap-3 md:grid-cols-2">

@@ -102,7 +102,9 @@ function seedSettings() {
   const insert = getDb().prepare(
     "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)"
   );
-  insert.run("m3u_url", config.m3uUrl);
+  insert.run("xc_base_url", config.xcBaseUrl);
+  insert.run("xc_username", config.xcUsername);
+  insert.run("xc_password", config.xcPassword);
   insert.run("xmltv_url", config.xmltvUrl);
   insert.run("refresh_interval_hours", String(config.refreshIntervalHours));
   insert.run("plex_server_identifier", config.plexServerIdentifier);
