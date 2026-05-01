@@ -13,7 +13,7 @@ import "./styles/index.css";
 function Protected({ children, admin = false }: { children: React.ReactNode; admin?: boolean }) {
   const { user, loading } = useAuth();
   const location = useLocation();
-  if (loading) return <div className="grid min-h-screen place-items-center text-sm text-slate-500">Loading TV guide...</div>;
+  if (loading) return <div className="grid min-h-screen place-items-center text-sm text-slate-500">Loading SSTV IPTV...</div>;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (admin && user.role !== "admin") return <Navigate to="/" replace />;
   return children;
@@ -30,7 +30,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <Link to="/" className="flex items-center gap-2 text-base font-bold">
             <span className="grid size-9 place-items-center rounded-md bg-accent text-white"><Tv size={19} /></span>
-            TV Guide
+            SSTV IPTV
           </Link>
           {user && (
             <button

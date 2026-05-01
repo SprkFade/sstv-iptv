@@ -1,4 +1,4 @@
-const CACHE_NAME = "tv-guide-shell-v1";
+const CACHE_NAME = "sstv-iptv-shell-v1";
 const SHELL = ["/", "/manifest.webmanifest", "/icons/icon.svg"];
 
 self.addEventListener("install", (event) => {

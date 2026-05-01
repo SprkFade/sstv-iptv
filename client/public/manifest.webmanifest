@@ -1,6 +1,6 @@
 {
-  "name": "TV Guide PWA",
-  "short_name": "TV Guide",
+  "name": "SSTV IPTV",
+  "short_name": "SSTV IPTV",
   "description": "A mobile-first IPTV and XMLTV guide.",
   "start_url": "/",
   "display": "standalone",

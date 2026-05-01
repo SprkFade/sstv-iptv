@@ -6,7 +6,7 @@ import { matchChannels } from "./match.js";
 async function fetchText(url: string) {
   const response = await fetch(url, {
     headers: {
-      "user-agent": "TV Guide PWA/1.0"
+      "user-agent": "SSTV IPTV/1.0"
     }
   });
   if (!response.ok) {

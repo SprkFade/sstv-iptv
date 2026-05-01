@@ -9,5 +9,5 @@ startRefreshScheduler();
 
 const app = createApp();
 app.listen(config.port, () => {
-  console.log(`TV Guide PWA listening on http://0.0.0.0:${config.port}`);
+  console.log(`SSTV IPTV listening on http://0.0.0.0:${config.port}`);
 });

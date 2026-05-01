@@ -7,7 +7,7 @@ const root = process.cwd();
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 3025),
-  databasePath: process.env.DATABASE_PATH ?? path.join(root, "..", "data", "tv-guide.sqlite"),
+  databasePath: process.env.DATABASE_PATH ?? path.join(root, "..", "data", "sstv-iptv.sqlite"),
   cacheDir: process.env.CACHE_DIR ?? path.join(root, "..", "cache"),
   adminUsername: process.env.ADMIN_USERNAME ?? "admin",
   adminPassword: process.env.ADMIN_PASSWORD ?? "changeme",
@@ -17,7 +17,7 @@ export const config = {
   refreshIntervalHours: Math.max(1, Number(process.env.REFRESH_INTERVAL_HOURS ?? 12)),
   plexServerIdentifier: process.env.PLEX_SERVER_IDENTIFIER ?? "",
   plexToken: process.env.PLEX_TOKEN ?? "",
-  plexProductName: process.env.PLEX_PRODUCT_NAME ?? "TV Guide PWA",
+  plexProductName: process.env.PLEX_PRODUCT_NAME ?? "SSTV IPTV",
   plexClientIdentifier: process.env.PLEX_CLIENT_IDENTIFIER ?? randomUUID(),
   cookieSecure: process.env.COOKIE_SECURE === "true",
   clientDistPath: process.env.CLIENT_DIST_PATH ?? path.resolve(root, "../client/dist")

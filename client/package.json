@@ -1,5 +1,5 @@
 {
-  "name": "@tv-guide/client",
+  "name": "@sstv-iptv/client",
   "version": "1.0.0",
   "type": "module",
   "private": true,

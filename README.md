@@ -1,4 +1,4 @@
-# TV Guide PWA
+# SSTV IPTV
 
 A production-oriented, mobile-first IPTV guide that imports one M3U playlist and one XMLTV guide, stores normalized data in SQLite, and serves a React PWA from an Express API.
 
@@ -80,7 +80,7 @@ Set a long random `SESSION_SECRET` before exposing the app.
 
 The compose file uses bind mounts only:
 
-- `./data:/app/data` stores `tv-guide.sqlite`
+- `./data:/app/data` stores `sstv-iptv.sqlite`
 - `./cache:/app/cache` is reserved for cached runtime assets
 
 The server creates both runtime directories on startup.

@@ -1,13 +1,13 @@
 services:
-  tv-guide:
+  sstv-iptv:
     image: ghcr.io/sprkfade/sstv-iptv:latest
-    container_name: tv-guide-pwa
+    container_name: sstv-iptv
     ports:
       - "3025:3025"
     environment:
       NODE_ENV: production
       PORT: 3025
-      DATABASE_PATH: /app/data/tv-guide.sqlite
+      DATABASE_PATH: /app/data/sstv-iptv.sqlite
       CACHE_DIR: /app/cache
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
@@ -17,7 +17,7 @@ services:
       REFRESH_INTERVAL_HOURS: ${REFRESH_INTERVAL_HOURS:-12}
       PLEX_SERVER_IDENTIFIER: ${PLEX_SERVER_IDENTIFIER:-}
       PLEX_TOKEN: ${PLEX_TOKEN:-}
-      PLEX_PRODUCT_NAME: ${PLEX_PRODUCT_NAME:-TV Guide PWA}
+      PLEX_PRODUCT_NAME: ${PLEX_PRODUCT_NAME:-SSTV IPTV}
       PLEX_CLIENT_IDENTIFIER: ${PLEX_CLIENT_IDENTIFIER:-}
     volumes:
       - ./data:/app/data

@@ -5,7 +5,7 @@ import { addDaysIso, nowIso } from "../utils/time.js";
 import type { AuthUser, AuthedRequest } from "../types/app.js";
 import { config } from "../config.js";
 
-const cookieName = "tv_guide_sid";
+const cookieName = "sstv_iptv_sid";
 
 export function createSession(res: Response, userId: number) {
   const sid = crypto.randomBytes(32).toString("base64url");
