@@ -89,6 +89,7 @@ export function migrate() {
 
     CREATE INDEX IF NOT EXISTS idx_channels_enabled_group ON channels(enabled, group_title);
     CREATE INDEX IF NOT EXISTS idx_channels_tvg_id ON channels(tvg_id);
+    CREATE INDEX IF NOT EXISTS idx_channels_stream_url ON channels(stream_url);
     CREATE INDEX IF NOT EXISTS idx_channels_xmltv_channel_id ON channels(xmltv_channel_id);
     CREATE INDEX IF NOT EXISTS idx_programs_channel_time ON programs(channel_id, start_time, end_time);
     CREATE INDEX IF NOT EXISTS idx_programs_time ON programs(start_time, end_time);

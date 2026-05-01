@@ -180,7 +180,7 @@ export function AdminPage() {
           {(() => {
             const updatedAgo = refreshStatus.updatedAt ? Math.max(0, Math.floor((now - new Date(refreshStatus.updatedAt).getTime()) / 1000)) : null;
             const elapsed = refreshStatus.startedAt ? Math.max(0, Math.floor((now - new Date(refreshStatus.startedAt).getTime()) / 1000)) : null;
-            const saving = refreshStatus.active && refreshStatus.stage === "Saving guide data";
+            const saving = refreshStatus.active && (refreshStatus.stage === "Saving guide data" || refreshStatus.stage === "Saving guide programs");
             const channelValue = saving && refreshStatus.savedChannelCount < refreshStatus.channelCount
               ? `${refreshStatus.savedChannelCount}/${refreshStatus.channelCount}`
               : String(refreshStatus.channelCount);

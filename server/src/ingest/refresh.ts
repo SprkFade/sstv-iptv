@@ -1,9 +1,12 @@
 import Database from "better-sqlite3";
 import { config, ensureRuntimeDirs } from "../config.js";
 import { getDb, setting, setSetting } from "../db/database.js";
-import { parseXmltv } from "./xmltv.js";
+import { parseSelectedXmltvPrograms, parseXmltvChannels } from "./xmltv.js";
 import { matchChannels } from "./match.js";
 import { fetchXcChannels, xcXmltvUrl, type XcCredentials } from "./xc.js";
+
+const GUIDE_LOOKBACK_HOURS = 2;
+const GUIDE_LOOKAHEAD_DAYS = 14;
 
 export interface RefreshProgress {
   active: boolean;
@@ -139,32 +142,26 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
     ]);
     setProgress({
       stage: "Parsing XMLTV guide",
-      detail: "Reading channel and program listings.",
+      detail: "Reading XMLTV channel listings.",
       channelCount: sourceChannels.length
     });
-    const xmltv = await parseXmltv(xmltvText, (parseProgress) => {
+    const xmltvChannels = await parseXmltvChannels(xmltvText, (parseProgress) => {
       setProgress({
         stage: "Parsing XMLTV guide",
-        detail: `Parsed ${parseProgress.channels} XMLTV channels and ${parseProgress.programs} programs.`,
-        channelCount: sourceChannels.length,
-        totalProgramCount: parseProgress.programs,
-        programCount: parseProgress.programs
+        detail: `Parsed ${parseProgress.channels} XMLTV channels.`,
+        channelCount: sourceChannels.length
       });
     });
     setProgress({
       stage: "Matching channels",
-      detail: `Matching ${sourceChannels.length} channels with ${xmltv.channels.length} XMLTV entries.`,
-      channelCount: sourceChannels.length,
-      totalProgramCount: xmltv.programs.length,
-      programCount: xmltv.programs.length
+      detail: `Matching ${sourceChannels.length} channels with ${xmltvChannels.length} XMLTV entries.`,
+      channelCount: sourceChannels.length
     });
-    const { matches, matchedCount } = matchChannels(sourceChannels, xmltv.channels);
+    const { matches, matchedCount } = matchChannels(sourceChannels, xmltvChannels);
     setProgress({
       stage: "Saving guide data",
-      detail: `Saving channels and ${xmltv.programs.length} program entries.`,
+      detail: `Saving ${sourceChannels.length} channels before scanning upcoming program entries.`,
       channelCount: sourceChannels.length,
-      totalProgramCount: xmltv.programs.length,
-      programCount: xmltv.programs.length,
       matchedCount
     });
 
@@ -184,18 +181,18 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
          ORDER BY CASE WHEN tvg_id = ? THEN 0 ELSE 1 END
          LIMIT 1`
         );
-      const insertChannel = ingestDb.prepare(
-        `INSERT INTO channels
+        const insertChannel = ingestDb.prepare(
+          `INSERT INTO channels
          (tvg_id, tvg_name, display_name, logo_url, group_title, stream_url, xmltv_channel_id, channel_number, sort_order, enabled)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-      );
-      const updateChannel = ingestDb.prepare(
-        `UPDATE channels
+        );
+        const updateChannel = ingestDb.prepare(
+          `UPDATE channels
          SET tvg_id = ?, tvg_name = ?, display_name = ?, logo_url = ?, group_title = ?,
              stream_url = ?, xmltv_channel_id = ?, channel_number = ?, sort_order = ?,
              enabled = 1, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`
-      );
+        );
         const insertProgram = ingestDb.prepare(
           `INSERT INTO programs
          (channel_id, title, subtitle, description, category, start_time, end_time)
@@ -237,32 +234,51 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
           }
         }
 
-        for (const program of xmltv.programs) {
-          const channelId = xmltvToChannelId.get(program.channelXmltvId);
-          if (!channelId) continue;
-          insertProgram.run(
-            channelId,
-            program.title,
-            program.subtitle,
-            program.description,
-            program.category,
-            program.startTime,
-            program.endTime
-          );
-          savedProgramCount += 1;
-          if (savedProgramCount % 1000 === 0) {
-            setProgress({
-              detail: `Saving programs ${savedProgramCount}/${xmltv.programs.length}.`,
-              savedProgramCount,
-              programCount: savedProgramCount
-            });
-            await yieldToEventLoop();
-          }
-        }
+        const windowStart = new Date(Date.now() - GUIDE_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
+        const windowEnd = new Date(Date.now() + GUIDE_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000).toISOString();
         setProgress({
-          detail: `Saving programs ${savedProgramCount}/${xmltv.programs.length}.`,
+          stage: "Saving guide programs",
+          detail: `Scanning XMLTV programs for matched channels through ${GUIDE_LOOKAHEAD_DAYS} days ahead.`,
+          totalProgramCount: 0,
+          programCount: 0,
+          savedProgramCount: 0
+        });
+
+        const programCounts = await parseSelectedXmltvPrograms(
+          xmltvText,
+          new Set(xmltvToChannelId.keys()),
+          (program) => {
+            const channelId = xmltvToChannelId.get(program.channelXmltvId);
+            if (!channelId) return;
+            insertProgram.run(
+              channelId,
+              program.title,
+              program.subtitle,
+              program.description,
+              program.category,
+              program.startTime,
+              program.endTime
+            );
+            savedProgramCount += 1;
+          },
+          {
+            windowStart,
+            windowEnd,
+            onProgress: (programProgress) => {
+              setProgress({
+                detail: `Scanned ${programProgress.scanned} XMLTV programs, saved ${savedProgramCount} upcoming entries.`,
+                totalProgramCount: programProgress.scanned,
+                savedProgramCount,
+                programCount: savedProgramCount
+              });
+            }
+          }
+        );
+        setProgress({
+          detail: `Scanned ${programCounts.scanned} XMLTV programs, saved ${savedProgramCount} upcoming entries.`,
           savedChannelCount,
           savedProgramCount,
+          totalProgramCount: programCounts.scanned,
           programCount: savedProgramCount
         });
         ingestDb.prepare("COMMIT").run();
@@ -286,7 +302,7 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
       detail: "Writing refresh results.",
       channelCount: counts.channelCount,
       programCount: counts.programCount.count,
-      totalProgramCount: xmltv.programs.length,
+      totalProgramCount: counts.programCount.count,
       savedChannelCount: counts.channelCount,
       savedProgramCount: counts.programCount.count,
       matchedCount: counts.matchedCount
@@ -304,7 +320,7 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
       detail: `${counts.channelCount} channels, ${counts.programCount.count} programs, ${counts.matchedCount} matched.`,
       channelCount: counts.channelCount,
       programCount: counts.programCount.count,
-      totalProgramCount: xmltv.programs.length,
+      totalProgramCount: counts.programCount.count,
       savedChannelCount: counts.channelCount,
       savedProgramCount: counts.programCount.count,
       matchedCount: counts.matchedCount
