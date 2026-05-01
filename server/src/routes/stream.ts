@@ -130,7 +130,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   fs.mkdirSync(dir, { recursive: true });
 
   const playlistPath = path.join(dir, "index.m3u8");
-  const segmentPattern = "segment_%05d.m4s";
+  const segmentPattern = "segment_%05d.ts";
   const ffmpeg = spawn(config.ffmpegPath, [
     "-hide_banner",
     "-loglevel", "warning",
@@ -157,11 +157,11 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-b:a", "128k",
     "-ac", "2",
     "-ar", "48000",
+    "-max_muxing_queue_size", "1024",
+    "-avoid_negative_ts", "make_zero",
     "-f", "hls",
     "-hls_time", "2",
     "-hls_list_size", "6",
-    "-hls_segment_type", "fmp4",
-    "-hls_fmp4_init_filename", "init.mp4",
     "-hls_flags", "delete_segments+append_list+independent_segments+omit_endlist",
     "-hls_segment_filename", segmentPattern,
     "index.m3u8"
@@ -258,7 +258,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
   const fileParam = req.params.file;
   const file = Array.isArray(fileParam) ? fileParam[0] : fileParam;
   if (!file) return res.status(400).json({ error: "Invalid HLS file" });
-  if (!/^index\.m3u8$/.test(file) && !/^init\.mp4$/.test(file) && !/^segment_\d{5}\.m4s$/.test(file)) {
+  if (!/^index\.m3u8$/.test(file) && !/^segment_\d{5}\.ts$/.test(file)) {
     return res.status(400).json({ error: "Invalid HLS file" });
   }
 
@@ -276,10 +276,8 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
     res.setHeader("x-accel-buffering", "no");
     if (file.endsWith(".m3u8")) {
       res.type("application/vnd.apple.mpegurl");
-    } else if (file.endsWith(".mp4")) {
-      res.type("video/mp4");
     } else {
-      res.type("video/iso.segment");
+      res.type("video/mp2t");
     }
     return res.sendFile(filePath);
   } catch (error) {
