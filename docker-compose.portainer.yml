@@ -11,6 +11,7 @@ services:
       CACHE_DIR: /app/cache
       SESSION_SECRET: ${SESSION_SECRET:-replace-with-a-long-random-secret}
       FFMPEG_PATH: ffmpeg
+      FFMPEG_USER_AGENT: ${FFMPEG_USER_AGENT:-VLC/3.0.20 LibVLC/3.0.20}
     volumes:
       - ./data:/app/data
       - ./cache:/app/cache

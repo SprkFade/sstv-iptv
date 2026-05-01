@@ -20,6 +20,7 @@ export const config = {
   plexProductName: "SSTV IPTV",
   plexClientIdentifier: randomUUID(),
   ffmpegPath: process.env.FFMPEG_PATH ?? "ffmpeg",
+  ffmpegUserAgent: process.env.FFMPEG_USER_AGENT ?? "VLC/3.0.20 LibVLC/3.0.20",
   cookieSecure: process.env.COOKIE_SECURE === "true",
   clientDistPath: process.env.CLIENT_DIST_PATH ?? path.resolve(root, "../client/dist")
 };

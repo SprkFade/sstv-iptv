@@ -21,6 +21,8 @@ type HlsSession = {
 
 const hlsSessions = new Map<number, HlsSession>();
 const HLS_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+const FFMPEG_NETWORK_TIMEOUT_US = "60000000";
+const FFMPEG_INPUT_HEADERS = "Accept: */*\r\nConnection: keep-alive\r\nIcy-MetaData: 1\r\n";
 
 function findChannel(channelId: number) {
   return getDb()
@@ -53,6 +55,22 @@ function stopHlsSession(channelId: number) {
   if (!session.process.killed) session.process.kill("SIGTERM");
 }
 
+function redactStreamDetails(value: string, streamUrl: string) {
+  let redacted = value.replaceAll(streamUrl, "[stream-url]");
+  try {
+    const url = new URL(streamUrl);
+    redacted = redacted.replaceAll(url.username, "[username]");
+    redacted = redacted.replaceAll(url.password, "[password]");
+    redacted = redacted.replace(
+      /(https?:\/\/[^/\s]+\/live\/)[^/\s]+\/[^/\s]+\/([^/\s]+)/g,
+      "$1[username]/[password]/$2"
+    );
+  } catch {
+    redacted = redacted.replace(/(\/live\/)[^/\s]+\/[^/\s]+\//g, "$1[username]/[password]/");
+  }
+  return redacted;
+}
+
 function ensureHlsSession(channelId: number, streamUrl: string) {
   const existing = hlsSessions.get(channelId);
   if (existing && !existing.exited && existing.streamUrl === streamUrl) {
@@ -76,9 +94,13 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-probesize", "10000000",
     "-reconnect", "1",
     "-reconnect_streamed", "1",
+    "-reconnect_at_eof", "1",
+    "-reconnect_on_network_error", "1",
+    "-reconnect_on_http_error", "4xx,5xx",
     "-reconnect_delay_max", "5",
-    "-user_agent", "SSTV IPTV/1.0",
-    "-rw_timeout", "15000000",
+    "-user_agent", config.ffmpegUserAgent,
+    "-headers", FFMPEG_INPUT_HEADERS,
+    "-rw_timeout", FFMPEG_NETWORK_TIMEOUT_US,
     "-i", streamUrl,
     "-map", "0:v:0?",
     "-map", "0:a:0?",
@@ -133,7 +155,11 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     session.exited = true;
     session.exitCode = code;
     if (Date.now() - session.lastAccess < HLS_IDLE_TIMEOUT_MS) {
-      console.warn("FFmpeg HLS transcode exited", { channelId, code, stderr: session.stderr });
+      console.warn("FFmpeg HLS transcode exited", {
+        channelId,
+        code,
+        stderr: redactStreamDetails(session.stderr, session.streamUrl)
+      });
     }
   });
 
@@ -179,7 +205,7 @@ streamRouter.get("/:channelId/hls/status", async (req: AuthedRequest, res) => {
     exitCode: session.exitCode,
     files,
     playlist,
-    stderr: session.stderr
+    stderr: redactStreamDetails(session.stderr, session.streamUrl)
   });
 });
 
@@ -219,7 +245,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
     if (session?.exited) {
       return res.status(502).json({
         error: `FFmpeg HLS transcode exited${session.exitCode === null ? "" : ` with code ${session.exitCode}`}.`,
-        details: session.stderr
+        details: redactStreamDetails(session.stderr, session.streamUrl)
       });
     }
     next(error);
@@ -238,9 +264,13 @@ streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
     "-loglevel", "warning",
     "-reconnect", "1",
     "-reconnect_streamed", "1",
+    "-reconnect_at_eof", "1",
+    "-reconnect_on_network_error", "1",
+    "-reconnect_on_http_error", "4xx,5xx",
     "-reconnect_delay_max", "5",
-    "-user_agent", "SSTV IPTV/1.0",
-    "-rw_timeout", "15000000",
+    "-user_agent", config.ffmpegUserAgent,
+    "-headers", FFMPEG_INPUT_HEADERS,
+    "-rw_timeout", FFMPEG_NETWORK_TIMEOUT_US,
     "-i", channel.stream_url,
     "-map", "0:v:0?",
     "-map", "0:a:0?",
@@ -288,7 +318,11 @@ streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
 
   ffmpeg.on("close", (code) => {
     if (closedByClient || code === 0) return;
-    console.warn("FFmpeg transcode exited", { channelId, code, stderr });
+    console.warn("FFmpeg transcode exited", {
+      channelId,
+      code,
+      stderr: redactStreamDetails(stderr, channel.stream_url)
+    });
   });
 
   res.status(200);
