@@ -1,3 +1,5 @@
+import Database from "better-sqlite3";
+import { config, ensureRuntimeDirs } from "../config.js";
 import { getDb, setting, setSetting } from "../db/database.js";
 import { parseXmltv } from "./xmltv.js";
 import { matchChannels } from "./match.js";
@@ -77,6 +79,14 @@ function yieldToEventLoop() {
   return new Promise<void>((resolve) => setImmediate(resolve));
 }
 
+function openIngestDb() {
+  ensureRuntimeDirs();
+  const ingestDb = new Database(config.databasePath);
+  ingestDb.pragma("journal_mode = WAL");
+  ingestDb.pragma("foreign_keys = ON");
+  return ingestDb;
+}
+
 function currentXcCredentials(overrides?: Partial<XcCredentials>) {
   return {
     baseUrl: overrides?.baseUrl ?? setting("xc_base_url"),
@@ -132,7 +142,15 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
       detail: "Reading channel and program listings.",
       channelCount: sourceChannels.length
     });
-    const xmltv = parseXmltv(xmltvText);
+    const xmltv = await parseXmltv(xmltvText, (parseProgress) => {
+      setProgress({
+        stage: "Parsing XMLTV guide",
+        detail: `Parsed ${parseProgress.channels} XMLTV channels and ${parseProgress.programs} programs.`,
+        channelCount: sourceChannels.length,
+        totalProgramCount: parseProgress.programs,
+        programCount: parseProgress.programs
+      });
+    });
     setProgress({
       stage: "Matching channels",
       detail: `Matching ${sourceChannels.length} channels with ${xmltv.channels.length} XMLTV entries.`,
@@ -153,106 +171,109 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
     const applyRefresh = async () => {
       let savedChannelCount = 0;
       let savedProgramCount = 0;
-      db.prepare("BEGIN IMMEDIATE").run();
+      const ingestDb = openIngestDb();
+      ingestDb.prepare("BEGIN IMMEDIATE").run();
       try {
-      db.prepare("UPDATE channels SET enabled = 0, updated_at = CURRENT_TIMESTAMP").run();
-      db.prepare("DELETE FROM programs").run();
+        ingestDb.prepare("UPDATE channels SET enabled = 0, updated_at = CURRENT_TIMESTAMP").run();
+        ingestDb.prepare("DELETE FROM programs").run();
 
-      const findChannel = db.prepare(
-        `SELECT id FROM channels
+        const findChannel = ingestDb.prepare(
+          `SELECT id FROM channels
          WHERE (tvg_id IS NOT NULL AND tvg_id != '' AND tvg_id = ?)
             OR stream_url = ?
          ORDER BY CASE WHEN tvg_id = ? THEN 0 ELSE 1 END
          LIMIT 1`
-      );
-      const insertChannel = db.prepare(
-        `INSERT INTO channels
+        );
+        const insertChannel = ingestDb.prepare(
+          `INSERT INTO channels
          (tvg_id, tvg_name, display_name, logo_url, group_title, stream_url, xmltv_channel_id, enabled)
          VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
-      );
-      const updateChannel = db.prepare(
-        `UPDATE channels
+        );
+        const updateChannel = ingestDb.prepare(
+          `UPDATE channels
          SET tvg_id = ?, tvg_name = ?, display_name = ?, logo_url = ?, group_title = ?,
              stream_url = ?, xmltv_channel_id = ?, enabled = 1, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`
-      );
-      const insertProgram = db.prepare(
-        `INSERT INTO programs
+        );
+        const insertProgram = ingestDb.prepare(
+          `INSERT INTO programs
          (channel_id, title, subtitle, description, category, start_time, end_time)
          VALUES (?, ?, ?, ?, ?, ?, ?)`
-      );
-
-      const xmltvToChannelId = new Map<string, number>();
-      for (let index = 0; index < sourceChannels.length; index += 1) {
-        const channel = sourceChannels[index];
-        const xmltvMatch = matches.get(index);
-        const existing = findChannel.get(channel.tvgId, channel.streamUrl, channel.tvgId) as
-          | { id: number }
-          | undefined;
-
-        const values = [
-          channel.tvgId,
-          channel.tvgName,
-          channel.displayName,
-          channel.logoUrl || xmltvMatch?.icon || "",
-          channel.groupTitle,
-          channel.streamUrl,
-          xmltvMatch?.id ?? ""
-        ] as const;
-
-        const channelId = existing
-          ? (updateChannel.run(...values, existing.id), existing.id)
-          : Number(insertChannel.run(...values).lastInsertRowid);
-
-        if (xmltvMatch?.id) xmltvToChannelId.set(xmltvMatch.id, channelId);
-        savedChannelCount += 1;
-        if (savedChannelCount % 250 === 0 || savedChannelCount === sourceChannels.length) {
-          setProgress({
-            detail: `Saving channels ${savedChannelCount}/${sourceChannels.length}.`,
-            savedChannelCount
-          });
-          await yieldToEventLoop();
-        }
-      }
-
-      for (const program of xmltv.programs) {
-        const channelId = xmltvToChannelId.get(program.channelXmltvId);
-        if (!channelId) continue;
-        insertProgram.run(
-          channelId,
-          program.title,
-          program.subtitle,
-          program.description,
-          program.category,
-          program.startTime,
-          program.endTime
         );
-        savedProgramCount += 1;
-        if (savedProgramCount % 1000 === 0) {
-          setProgress({
-            detail: `Saving programs ${savedProgramCount}/${xmltv.programs.length}.`,
-            savedProgramCount,
-            programCount: savedProgramCount
-          });
-          await yieldToEventLoop();
-        }
-      }
-      setProgress({
-        detail: `Saving programs ${savedProgramCount}/${xmltv.programs.length}.`,
-        savedChannelCount,
-        savedProgramCount,
-        programCount: savedProgramCount
-      });
-      db.prepare("COMMIT").run();
 
-      return {
-        channelCount: sourceChannels.length,
-        programCount: { count: savedProgramCount },
-        matchedCount
-      };
+        const xmltvToChannelId = new Map<string, number>();
+        for (let index = 0; index < sourceChannels.length; index += 1) {
+          const channel = sourceChannels[index];
+          const xmltvMatch = matches.get(index);
+          const existing = findChannel.get(channel.tvgId, channel.streamUrl, channel.tvgId) as
+            | { id: number }
+            | undefined;
+
+          const values = [
+            channel.tvgId,
+            channel.tvgName,
+            channel.displayName,
+            channel.logoUrl || xmltvMatch?.icon || "",
+            channel.groupTitle,
+            channel.streamUrl,
+            xmltvMatch?.id ?? ""
+          ] as const;
+
+          const channelId = existing
+            ? (updateChannel.run(...values, existing.id), existing.id)
+            : Number(insertChannel.run(...values).lastInsertRowid);
+
+          if (xmltvMatch?.id) xmltvToChannelId.set(xmltvMatch.id, channelId);
+          savedChannelCount += 1;
+          if (savedChannelCount % 250 === 0 || savedChannelCount === sourceChannels.length) {
+            setProgress({
+              detail: `Saving channels ${savedChannelCount}/${sourceChannels.length}.`,
+              savedChannelCount
+            });
+            await yieldToEventLoop();
+          }
+        }
+
+        for (const program of xmltv.programs) {
+          const channelId = xmltvToChannelId.get(program.channelXmltvId);
+          if (!channelId) continue;
+          insertProgram.run(
+            channelId,
+            program.title,
+            program.subtitle,
+            program.description,
+            program.category,
+            program.startTime,
+            program.endTime
+          );
+          savedProgramCount += 1;
+          if (savedProgramCount % 1000 === 0) {
+            setProgress({
+              detail: `Saving programs ${savedProgramCount}/${xmltv.programs.length}.`,
+              savedProgramCount,
+              programCount: savedProgramCount
+            });
+            await yieldToEventLoop();
+          }
+        }
+        setProgress({
+          detail: `Saving programs ${savedProgramCount}/${xmltv.programs.length}.`,
+          savedChannelCount,
+          savedProgramCount,
+          programCount: savedProgramCount
+        });
+        ingestDb.prepare("COMMIT").run();
+
+        return {
+          channelCount: sourceChannels.length,
+          programCount: { count: savedProgramCount },
+          matchedCount
+        };
       } catch (error) {
-        db.prepare("ROLLBACK").run();
+        ingestDb.prepare("ROLLBACK").run();
         throw error;
+      } finally {
+        ingestDb.close();
       }
     };
 

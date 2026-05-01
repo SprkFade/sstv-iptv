@@ -1,67 +1,101 @@
-import { XMLParser } from "fast-xml-parser";
 import type { XmltvChannel, XmltvProgram } from "../types/app.js";
 import { parseXmltvDate } from "../utils/time.js";
 
-const parser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: "@_",
-  textNodeName: "#text",
-  trimValues: true,
-  processEntities: {
-    enabled: true,
-    maxEntitySize: 1024,
-    maxTotalExpansions: 1_000_000,
-    maxExpandedLength: 50_000_000,
-    maxEntityCount: 20
-  }
-});
-
-function arrayify<T>(value: T | T[] | undefined): T[] {
-  if (!value) return [];
-  return Array.isArray(value) ? value : [value];
+export interface XmltvParseProgress {
+  channels: number;
+  programs: number;
 }
 
-function text(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "string" || typeof value === "number") return String(value);
-  if (Array.isArray(value)) return text(value[0]);
-  if (typeof value === "object" && "#text" in value) {
-    return text((value as Record<string, unknown>)["#text"]);
-  }
-  return "";
+const xmltvNodePattern = /<(channel|programme)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+const attributePattern = /([\w:-]+)\s*=\s*(["'])(.*?)\2/g;
+
+function yieldToEventLoop() {
+  return new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-export function parseXmltv(input: string): { channels: XmltvChannel[]; programs: XmltvProgram[] } {
-  const parsed = parser.parse(input) as {
-    tv?: {
-      channel?: unknown;
-      programme?: unknown;
-    };
-  };
+function decodeXml(value: string) {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match, decimal: string) => String.fromCodePoint(Number.parseInt(decimal, 10)))
+    .replace(/&quot;/g, "\"")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
 
-  const channels = arrayify(parsed.tv?.channel).map((item) => {
-    const channel = item as Record<string, unknown>;
-    const displayName = text(channel["display-name"]);
-    const icon = channel.icon as Record<string, unknown> | undefined;
-    return {
-      id: String(channel["@_id"] ?? ""),
-      displayName,
-      icon: String(icon?.["@_src"] ?? "")
-    };
-  }).filter((channel) => channel.id);
+function stripTags(value: string) {
+  return value.replace(/<[^>]+>/g, "");
+}
 
-  const programs = arrayify(parsed.tv?.programme).map((item) => {
-    const program = item as Record<string, unknown>;
-    return {
-      channelXmltvId: String(program["@_channel"] ?? ""),
-      title: text(program.title) || "Untitled",
-      subtitle: text(program["sub-title"]),
-      description: text(program.desc),
-      category: text(program.category),
-      startTime: parseXmltvDate(String(program["@_start"] ?? "")),
-      endTime: parseXmltvDate(String(program["@_stop"] ?? ""))
-    };
-  }).filter((program) => program.channelXmltvId && program.startTime < program.endTime);
+function attributes(input: string) {
+  const result = new Map<string, string>();
+  attributePattern.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = attributePattern.exec(input))) {
+    result.set(match[1], decodeXml(match[3]));
+  }
+  return result;
+}
 
+function tagText(block: string, tagName: string) {
+  const match = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i").exec(block);
+  return match ? decodeXml(stripTags(match[1])).trim() : "";
+}
+
+function tagAttribute(block: string, tagName: string, attributeName: string) {
+  const match = new RegExp(`<${tagName}\\b([^>]*)\\/?\\s*>`, "i").exec(block);
+  return match ? attributes(match[1]).get(attributeName) ?? "" : "";
+}
+
+export async function parseXmltv(
+  input: string,
+  onProgress?: (progress: XmltvParseProgress) => void
+): Promise<{ channels: XmltvChannel[]; programs: XmltvProgram[] }> {
+  const channels: XmltvChannel[] = [];
+  const programs: XmltvProgram[] = [];
+  let processed = 0;
+  let match: RegExpExecArray | null;
+  xmltvNodePattern.lastIndex = 0;
+
+  while ((match = xmltvNodePattern.exec(input))) {
+    const [, nodeName, attributeText, body] = match;
+    const attrs = attributes(attributeText);
+
+    if (nodeName.toLowerCase() === "channel") {
+      const id = attrs.get("id") ?? "";
+      if (id) {
+        channels.push({
+          id,
+          displayName: tagText(body, "display-name"),
+          icon: tagAttribute(body, "icon", "src")
+        });
+      }
+    } else {
+      const channelXmltvId = attrs.get("channel") ?? "";
+      const startTime = parseXmltvDate(attrs.get("start"));
+      const endTime = parseXmltvDate(attrs.get("stop"));
+      if (channelXmltvId && startTime < endTime) {
+        programs.push({
+          channelXmltvId,
+          title: tagText(body, "title") || "Untitled",
+          subtitle: tagText(body, "sub-title"),
+          description: tagText(body, "desc"),
+          category: tagText(body, "category"),
+          startTime,
+          endTime
+        });
+      }
+    }
+
+    processed += 1;
+    if (processed % 500 === 0) {
+      onProgress?.({ channels: channels.length, programs: programs.length });
+      await yieldToEventLoop();
+    }
+  }
+
+  onProgress?.({ channels: channels.length, programs: programs.length });
   return { channels, programs };
 }
