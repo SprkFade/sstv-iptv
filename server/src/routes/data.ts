@@ -83,7 +83,34 @@ dataRouter.get("/guide/current", (req: AuthedRequest, res) => {
        ORDER BY ${channelOrder}
        LIMIT ? OFFSET ?`
     )
-    .all(...(req.user ? [at, at, req.user.id] : [at, at]), ...params, limit, offset);
+    .all(...(req.user ? [at, at, req.user.id] : [at, at]), ...params, limit, offset) as Array<Record<string, unknown> & { channel_id: number; upcoming?: unknown[] }>;
+
+  const channelIds = rows.map((row) => row.channel_id);
+  if (channelIds.length > 0) {
+    const placeholders = channelIds.map(() => "?").join(",");
+    const upcoming = getDb()
+      .prepare(
+        `SELECT id, channel_id, title, subtitle, description, category, start_time, end_time
+         FROM (
+           SELECT programs.*,
+                  ROW_NUMBER() OVER (PARTITION BY channel_id ORDER BY start_time) AS row_number
+           FROM programs
+           WHERE channel_id IN (${placeholders}) AND start_time >= ?
+         )
+         WHERE row_number <= 2
+         ORDER BY channel_id, start_time`
+      )
+      .all(...channelIds, at) as Array<Record<string, unknown> & { channel_id: number }>;
+    const upcomingByChannel = new Map<number, Array<Record<string, unknown>>>();
+    for (const program of upcoming) {
+      const list = upcomingByChannel.get(program.channel_id) ?? [];
+      list.push(program);
+      upcomingByChannel.set(program.channel_id, list);
+    }
+    for (const row of rows) {
+      row.upcoming = upcomingByChannel.get(row.channel_id) ?? [];
+    }
+  }
 
   const total = getDb()
     .prepare(
