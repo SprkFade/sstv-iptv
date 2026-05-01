@@ -16,7 +16,7 @@ function Protected({ children, admin = false }: { children: React.ReactNode; adm
   const location = useLocation();
   if (loading) return <div className="grid min-h-screen place-items-center bg-mist text-sm text-ink/60">Loading SSTV IPTV...</div>;
   if (setupRequired) return <Navigate to="/setup" replace />;
-  if (!user) return <Navigate to="/" replace state={{ from: location.pathname }} />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (admin && user.role !== "admin") return <Navigate to="/" replace />;
   return children;
 }
@@ -100,7 +100,9 @@ function Shell({ children }: { children: React.ReactNode }) {
 function App() {
   useEffect(() => {
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+      navigator.serviceWorker.register("/sw.js")
+        .then((registration) => registration.update())
+        .catch(() => undefined);
     }
   }, []);
 
