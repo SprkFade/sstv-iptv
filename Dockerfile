@@ -14,7 +14,9 @@ RUN npm prune --omit=dev
 
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
+ARG APP_BUILD=dev
 ENV NODE_ENV=production
+ENV APP_BUILD=${APP_BUILD}
 LABEL org.opencontainers.image.source="https://github.com/SprkFade/sstv-iptv"
 LABEL org.opencontainers.image.description="SSTV IPTV mobile-first M3U and XMLTV PWA"
 LABEL org.opencontainers.image.licenses="MIT"
