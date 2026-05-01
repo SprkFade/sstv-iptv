@@ -43,7 +43,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3">
           <Link to="/" className="flex items-center gap-2 text-base font-bold">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-white">
-              <Tv size={19} strokeWidth={2.2} className="block translate-y-px" />
+              <Tv size={19} strokeWidth={2.2} className="block" />
             </span>
             SSTV IPTV
           </Link>
