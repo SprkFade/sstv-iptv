@@ -34,11 +34,14 @@ function RootPage() {
 function Shell({ children }: { children: React.ReactNode }) {
   const { user, logout, setupRequired } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     return window.localStorage.getItem("sstv-theme") === "light" ? "light" : "dark";
   });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navUser = user && !setupRequired ? user : null;
   const itemClass = "flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-medium text-ink/80 hover:bg-ink/5";
+  const mobileItemClass = "flex min-h-12 items-center gap-3 rounded-md px-3 text-sm font-semibold text-ink hover:bg-ink/5";
 
   useEffect(() => {
     document.documentElement.classList.remove("dark", "light");
@@ -47,21 +50,27 @@ function Shell({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem("sstv-theme", theme);
   }, [theme]);
 
-  const navLinks = navUser ? (
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  const renderNavLinks = (className: string, onClick?: () => void) => navUser ? (
     <>
-      <Link className={itemClass} to="/"><Home size={18} /> <span>Guide</span></Link>
-      <Link className={itemClass} to="/favorites"><Heart size={18} /> <span>Favorites</span></Link>
+      <Link className={className} to="/" onClick={onClick}><Home size={18} /> <span>Guide</span></Link>
+      <Link className={className} to="/favorites" onClick={onClick}><Heart size={18} /> <span>Favorites</span></Link>
       {navUser.role === "admin" ? (
         <>
-          <Link className={itemClass} to="/streams"><MonitorPlay size={18} /> <span>Streams</span></Link>
-          <Link className={itemClass} to="/groups"><Layers3 size={18} /> <span>Groups</span></Link>
-          <Link className={itemClass} to="/admin"><Settings size={18} /> <span>Admin</span></Link>
+          <Link className={className} to="/streams" onClick={onClick}><MonitorPlay size={18} /> <span>Streams</span></Link>
+          <Link className={className} to="/groups" onClick={onClick}><Layers3 size={18} /> <span>Groups</span></Link>
+          <Link className={className} to="/admin" onClick={onClick}><Settings size={18} /> <span>Admin</span></Link>
         </>
       ) : (
-        <span className={itemClass}><Star size={18} /> <span>{navUser.username}</span></span>
+        <span className={className}><Star size={18} /> <span>{navUser.username}</span></span>
       )}
     </>
   ) : null;
+  const navLinks = renderNavLinks(itemClass);
+  const mobileNavLinks = renderNavLinks(mobileItemClass, () => setMobileMenuOpen(false));
 
   return (
     <div className="min-h-screen bg-mist text-ink">
@@ -80,7 +89,18 @@ function Shell({ children }: { children: React.ReactNode }) {
               </nav>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="relative flex items-center gap-2">
+            {navUser && (
+              <button
+                className="grid size-10 place-items-center rounded-md border border-line bg-panel text-ink hover:bg-ink/5 md:hidden"
+                onClick={() => setMobileMenuOpen((current) => !current)}
+                aria-expanded={mobileMenuOpen}
+                aria-haspopup="menu"
+                title="Open navigation menu"
+              >
+                <Settings size={19} />
+              </button>
+            )}
             <button
               className="grid size-10 place-items-center rounded-md border border-line bg-panel text-ink hover:bg-ink/5"
               onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
@@ -100,15 +120,15 @@ function Shell({ children }: { children: React.ReactNode }) {
               <LogOut size={19} />
             </button>
             )}
+            {navUser && mobileMenuOpen && (
+              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-56 overflow-hidden rounded-md border border-line bg-panel p-2 shadow-soft md:hidden" role="menu">
+                {mobileNavLinks}
+              </div>
+            )}
           </div>
         </div>
       </header>
-      <div className={`app-shell mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 pt-4 ${navUser ? "pb-24 md:pb-6" : "pb-6"}`}>
-        {navUser && (
-          <nav className={`sticky-chrome fixed inset-x-0 bottom-0 z-30 grid border-t border-line bg-panel px-2 py-2 md:hidden ${navUser.role === "admin" ? "grid-cols-5" : "grid-cols-3"}`}>
-            {navLinks}
-          </nav>
-        )}
+      <div className="app-shell mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 pb-6 pt-4">
         <main className="min-w-0">{children}</main>
       </div>
     </div>

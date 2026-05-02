@@ -104,7 +104,7 @@ select {
 }
 
 .guide-screen {
-  height: calc(100dvh - var(--app-shell-top) - 6.5rem);
+  height: calc(100dvh - var(--app-shell-top) - 1.5rem);
 }
 
 @media (min-width: 768px) {
