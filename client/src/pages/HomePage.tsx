@@ -53,6 +53,11 @@ export function HomePage() {
   const selectedChannelIdRef = useRef(restoredState.current.selectedChannelId);
   const [params] = useSearchParams();
 
+  useEffect(() => {
+    document.body.classList.add("guide-page-locked");
+    return () => document.body.classList.remove("guide-page-locked");
+  }, []);
+
   const saveGuideState = useCallback((overrides: Partial<GuideState> = {}) => {
     if (Object.prototype.hasOwnProperty.call(overrides, "selectedChannelId")) {
       selectedChannelIdRef.current = overrides.selectedChannelId;
@@ -271,7 +276,7 @@ export function HomePage() {
       )}
 
       <section className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-md border border-line bg-panel shadow-soft">
-        <div ref={channelListRef} className="guide-channel-list h-full overflow-y-auto overscroll-contain">
+        <div ref={channelListRef} className="guide-channel-list scrollbar-none h-full overflow-y-auto overscroll-contain">
         <div ref={guideScrollRef} className="overflow-x-auto">
           <div className="grid min-w-[760px] gap-0">
             {loading && airing.length === 0 && (

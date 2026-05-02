@@ -56,6 +56,11 @@ body {
   overflow-x: hidden;
 }
 
+body.guide-page-locked {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 button,
 input,
 textarea,
