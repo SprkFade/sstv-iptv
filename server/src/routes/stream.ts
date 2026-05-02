@@ -193,6 +193,16 @@ function stopHlsSession(channelId: number) {
   if (!session.process.killed) session.process.kill("SIGTERM");
 }
 
+export function stopAllHlsSessions(reason = "server shutdown") {
+  const channelIds = [...hlsSessions.keys()];
+  for (const channelId of channelIds) {
+    const session = hlsSessions.get(channelId);
+    if (session) recordSessionEvent(session, `Stopping stream session: ${reason}.`);
+    stopHlsSession(channelId);
+  }
+  return channelIds.length;
+}
+
 function redactStreamDetails(value: string, streamUrl: string) {
   let redacted = value.replaceAll(streamUrl, "[stream-url]");
   try {

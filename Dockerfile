@@ -26,4 +26,5 @@ COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/client/dist ./client/dist
 RUN mkdir -p /app/data /app/cache
 EXPOSE 3025
-CMD ["npm", "run", "start", "-w", "server"]
+STOPSIGNAL SIGTERM
+CMD ["node", "server/dist/index.js"]
