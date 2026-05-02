@@ -30,7 +30,7 @@ const FFMPEG_PROBE_OPTIONS = [
 ];
 const FFMPEG_TIMESTAMP_OPTIONS = [
   "-use_wallclock_as_timestamps", "1",
-  "-dts_delta_threshold", "1"
+  "-dts_delta_threshold", "10"
 ];
 
 function findChannel(channelId: number) {
