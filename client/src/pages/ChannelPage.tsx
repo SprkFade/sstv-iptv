@@ -129,6 +129,7 @@ function StreamStatusLog({ channelId }: { channelId: number }) {
         </div>
         <div className="rounded-md border border-line px-3 py-2 text-sm font-semibold">
           {error ? "Status unavailable" : status?.active ? "FFmpeg running" : "FFmpeg stopped"}
+          {status?.mode === "videoOnly" ? ", video-only fallback" : ""}
           {typeof status?.exitCode === "number" ? `, exit ${status.exitCode}` : ""}
         </div>
       </div>

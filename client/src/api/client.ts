@@ -71,6 +71,7 @@ export interface StreamStatus {
   active: boolean;
   exitCode?: number | null;
   files: Array<{ name: string; size: number; modified: string }>;
+  mode?: "normal" | "videoOnly";
   playlist?: string;
   stderr?: string;
   message?: string;

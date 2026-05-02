@@ -16,12 +16,16 @@ type HlsSession = {
   exitCode: number | null;
   inputAbort: AbortController;
   lastAccess: number;
+  mode: HlsMode;
   process: ChildProcessWithoutNullStreams;
   stderr: string;
   streamUrl: string;
 };
 
+type HlsMode = "normal" | "videoOnly";
+
 const hlsSessions = new Map<number, HlsSession>();
+const hlsFallbackModes = new Map<number, { mode: HlsMode; streamUrl: string }>();
 const HLS_IDLE_TIMEOUT_MS = 30 * 1000;
 const FFMPEG_PROBE_OPTIONS = [
   "-analyzeduration", "50000000",
@@ -117,6 +121,10 @@ function appendStderr(current: string, message: string) {
   return (current + message).slice(-4000);
 }
 
+function hasMalformedEac3Audio(stderr: string) {
+  return /Could not find codec parameters.+Audio:\s*eac3[\s\S]+unspecified sample rate/i.test(stderr);
+}
+
 function streamInputErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return "Unknown error";
   const details = [error.message];
@@ -194,9 +202,51 @@ function pipeProviderStreamToFfmpeg(
   return abort;
 }
 
+function hlsModeForChannel(channelId: number, streamUrl: string): HlsMode {
+  const fallback = hlsFallbackModes.get(channelId);
+  return fallback?.streamUrl === streamUrl ? fallback.mode : "normal";
+}
+
+function hlsOutputOptions(mode: HlsMode) {
+  const videoOptions = [
+    "-map", "0:v:0?",
+    "-vf", "scale=min(1280\\,iw):-2:force_original_aspect_ratio=decrease,fps=30,format=yuv420p",
+    "-c:v", "libx264",
+    "-preset", "veryfast",
+    "-tune", "zerolatency",
+    "-profile:v", "baseline",
+    "-level", "3.1",
+    "-b:v", "2800k",
+    "-maxrate", "3200k",
+    "-bufsize", "6400k",
+    "-g", "30",
+    "-keyint_min", "30",
+    "-sc_threshold", "0",
+    "-x264-params", "bframes=0:force-cfr=1:keyint=30:min-keyint=30:scenecut=0"
+  ];
+
+  if (mode === "videoOnly") {
+    return [
+      ...videoOptions,
+      "-an"
+    ];
+  }
+
+  return [
+    ...videoOptions,
+    "-map", "0:a:0?",
+    "-af", "aresample=async=1:first_pts=0",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-ac", "2",
+    "-ar", "48000"
+  ];
+}
+
 function ensureHlsSession(channelId: number, streamUrl: string) {
   const existing = hlsSessions.get(channelId);
-  if (existing && !existing.exited && existing.streamUrl === streamUrl) {
+  const mode = hlsModeForChannel(channelId, streamUrl);
+  if (existing && !existing.exited && existing.streamUrl === streamUrl && existing.mode === mode) {
     existing.lastAccess = Date.now();
     return existing;
   }
@@ -211,32 +261,13 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   const segmentPattern = "segment_%05d.ts";
   const ffmpeg = spawn(config.ffmpegPath, [
     "-hide_banner",
-    "-loglevel", "warning",
+    "-loglevel", mode === "videoOnly" ? "error" : "warning",
     "-fflags", "+genpts+igndts+discardcorrupt",
     ...FFMPEG_PROBE_OPTIONS,
     ...FFMPEG_TIMESTAMP_OPTIONS,
     "-re",
     "-i", "pipe:0",
-    "-map", "0:v:0?",
-    "-map", "0:a:0?",
-    "-vf", "scale=min(1280\\,iw):-2:force_original_aspect_ratio=decrease,fps=30,format=yuv420p",
-    "-af", "aresample=async=1:first_pts=0",
-    "-c:v", "libx264",
-    "-preset", "veryfast",
-    "-tune", "zerolatency",
-    "-profile:v", "baseline",
-    "-level", "3.1",
-    "-b:v", "2800k",
-    "-maxrate", "3200k",
-    "-bufsize", "6400k",
-    "-g", "30",
-    "-keyint_min", "30",
-    "-sc_threshold", "0",
-    "-x264-params", "bframes=0:force-cfr=1:keyint=30:min-keyint=30:scenecut=0",
-    "-c:a", "aac",
-    "-b:a", "128k",
-    "-ac", "2",
-    "-ar", "48000",
+    ...hlsOutputOptions(mode),
     "-max_muxing_queue_size", "1024",
     "-avoid_negative_ts", "make_zero",
     "-muxdelay", "0",
@@ -256,8 +287,9 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     exitCode: null,
     inputAbort: new AbortController(),
     lastAccess: Date.now(),
+    mode,
     process: ffmpeg,
-    stderr: "",
+    stderr: mode === "videoOnly" ? "Malformed EAC3 audio was detected earlier; using video-only fallback for this channel.\n" : "",
     streamUrl
   };
 
@@ -268,6 +300,11 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   ffmpeg.stderr.setEncoding("utf8");
   ffmpeg.stderr.on("data", (chunk: string) => {
     session.stderr = appendStderr(session.stderr, chunk);
+    if (session.mode === "normal" && hasMalformedEac3Audio(session.stderr)) {
+      hlsFallbackModes.set(channelId, { mode: "videoOnly", streamUrl });
+      session.stderr = appendStderr(session.stderr, "\nMalformed EAC3 audio detected; restarting this channel with video-only fallback.\n");
+      if (!session.process.killed) session.process.kill("SIGTERM");
+    }
   });
 
   ffmpeg.on("error", (error) => {
@@ -342,6 +379,7 @@ streamRouter.get("/:channelId/hls/status", async (req: AuthedRequest, res) => {
     active: !session.exited,
     exitCode: session.exitCode,
     files,
+    mode: session.mode,
     playlist,
     stderr: redactStreamDetails(session.stderr, session.streamUrl)
   });
