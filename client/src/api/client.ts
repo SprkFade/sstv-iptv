@@ -102,8 +102,10 @@ export interface StreamStatus {
     runtimeMs: number;
     settings: {
       inputMode: "ffmpeg-direct" | "node-pipe";
+      dvrWindowMinutes: number;
       reconnectDelayMax: number;
       rwTimeoutSeconds: number;
+      segmentSeconds: number;
       staleRestartSeconds: number;
     };
     startedAt: string;

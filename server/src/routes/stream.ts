@@ -86,6 +86,10 @@ const hlsFallbackModes = new Map<number, { mode: HlsMode; streamUrl: string }>()
 const HLS_IDLE_TIMEOUT_MS = 30 * 1000;
 const HLS_CLIENT_ACTIVE_MS = 45 * 1000;
 const HLS_CLIENT_STARTUP_GRACE_MS = 15 * 1000;
+const HLS_SEGMENT_SECONDS = 2;
+const HLS_DVR_WINDOW_MINUTES = 20;
+const HLS_DVR_SEGMENT_COUNT = Math.ceil((HLS_DVR_WINDOW_MINUTES * 60) / HLS_SEGMENT_SECONDS);
+const HLS_DELETE_THRESHOLD = 30;
 const FFMPEG_NORMAL_PROBE_OPTIONS = [
   "-analyzeduration", "8000000",
   "-probesize", "8000000",
@@ -627,7 +631,11 @@ function buildTrace(session: HlsSession, files: Array<{ name: string; size: numb
       lastSegmentName: session.requestStats.lastSegmentName
     },
     runtimeMs: now - session.startedAt,
-    settings: hlsRuntimeSettings(),
+    settings: {
+      ...hlsRuntimeSettings(),
+      dvrWindowMinutes: HLS_DVR_WINDOW_MINUTES,
+      segmentSeconds: HLS_SEGMENT_SECONDS
+    },
     startedAt: new Date(session.startedAt).toISOString(),
     tempFiles
   };
@@ -762,9 +770,9 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-muxdelay", "0",
     "-muxpreload", "0",
     "-f", "hls",
-    "-hls_time", "2",
-    "-hls_list_size", "60",
-    "-hls_delete_threshold", "60",
+    "-hls_time", String(HLS_SEGMENT_SECONDS),
+    "-hls_list_size", String(HLS_DVR_SEGMENT_COUNT),
+    "-hls_delete_threshold", String(HLS_DELETE_THRESHOLD),
     "-hls_flags", "delete_segments+independent_segments+omit_endlist+program_date_time+temp_file",
     "-hls_segment_filename", segmentPattern,
     "index.m3u8"
