@@ -30,6 +30,12 @@ export function createApp() {
   app.use(express.json({ limit: "1mb" }));
   app.use(cookieParser(config.sessionSecret));
   app.use(authMiddleware);
+  app.use("/api", (_req, res, next) => {
+    res.setHeader("cache-control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("pragma", "no-cache");
+    res.setHeader("expires", "0");
+    next();
+  });
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true });
