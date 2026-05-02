@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-const root = process.cwd();
+const cwd = process.cwd();
+const appRoot = path.basename(cwd) === "server" ? path.resolve(cwd, "..") : cwd;
 const ffmpegLogLevels = new Set(["quiet", "panic", "fatal", "error", "warning", "info", "verbose", "debug", "trace"]);
 const ffmpegLogLevel = ffmpegLogLevels.has(process.env.FFMPEG_LOG_LEVEL ?? "")
   ? process.env.FFMPEG_LOG_LEVEL!
@@ -12,8 +13,8 @@ const ffmpegHlsInputMode = process.env.FFMPEG_HLS_INPUT_MODE === "pipe" ? "pipe"
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 3025),
-  databasePath: process.env.DATABASE_PATH ?? path.join(root, "..", "data", "sstv-iptv.sqlite"),
-  cacheDir: process.env.CACHE_DIR ?? path.join(root, "..", "cache"),
+  databasePath: process.env.DATABASE_PATH ?? path.join(appRoot, "data", "sstv-iptv.sqlite"),
+  cacheDir: process.env.CACHE_DIR ?? path.join(appRoot, "cache"),
   sessionSecret: process.env.SESSION_SECRET ?? randomUUID(),
   xcBaseUrl: "",
   xcUsername: "",
@@ -33,7 +34,7 @@ export const config = {
   ffmpegHlsDvrWindowMinutes: Number(process.env.FFMPEG_HLS_DVR_WINDOW_MINUTES ?? 20),
   ffmpegUserAgent: process.env.FFMPEG_USER_AGENT ?? "VLC/3.0.20 LibVLC/3.0.20",
   cookieSecure: process.env.COOKIE_SECURE === "true",
-  clientDistPath: process.env.CLIENT_DIST_PATH ?? path.resolve(root, "../client/dist")
+  clientDistPath: process.env.CLIENT_DIST_PATH ?? path.join(appRoot, "client", "dist")
 };
 
 export function ensureRuntimeDirs() {
