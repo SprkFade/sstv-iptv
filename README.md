@@ -68,7 +68,7 @@ The launch wizard collects:
 
 Set a long random `SESSION_SECRET` before exposing the app.
 
-`FFMPEG_PATH` defaults to `ffmpeg`. The published Docker image includes FFmpeg for desktop live transcoding. `FFMPEG_USER_AGENT` defaults to a VLC-style user agent for IPTV provider compatibility.
+`FFMPEG_PATH` defaults to `ffmpeg`. The published Docker image includes FFmpeg for desktop live transcoding. `FFMPEG_LOG_LEVEL` defaults to `info`; use `verbose` or `debug` temporarily when diagnosing stream lockups. `FFMPEG_USER_AGENT` defaults to a VLC-style user agent for IPTV provider compatibility.
 
 ## Data Persistence
 

@@ -43,6 +43,7 @@ const FFMPEG_TIMESTAMP_OPTIONS = [
   "-dts_delta_threshold", "10"
 ];
 const STREAM_INPUT_RETRY_LIMIT = 12;
+const STREAM_LOG_BUFFER_LENGTH = 16_000;
 
 function findChannel(channelId: number) {
   return getDb()
@@ -124,7 +125,7 @@ function redactStreamDetails(value: string, streamUrl: string) {
 }
 
 function appendStderr(current: string, message: string) {
-  return (current + message).slice(-4000);
+  return (current + message).slice(-STREAM_LOG_BUFFER_LENGTH);
 }
 
 function hasMalformedEac3Audio(stderr: string) {
@@ -238,7 +239,7 @@ function hlsModeForChannel(channelId: number, streamUrl: string): HlsMode {
   return fallback?.streamUrl === streamUrl ? fallback.mode : "normal";
 }
 
-function ffmpegInputOptions(mode: HlsMode, logLevel: "warning" | "error") {
+function ffmpegInputOptions(mode: HlsMode, logLevel = config.ffmpegLogLevel) {
   return [
     "-hide_banner",
     "-nostats",
@@ -305,7 +306,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   const playlistPath = path.join(dir, "index.m3u8");
   const segmentPattern = "segment_%05d.ts";
   const ffmpeg = spawn(config.ffmpegPath, [
-    ...ffmpegInputOptions(mode, mode === "videoOnly" ? "error" : "warning"),
+    ...ffmpegInputOptions(mode),
     ...hlsOutputOptions(mode),
     "-max_muxing_queue_size", "1024",
     "-avoid_negative_ts", "make_zero",
@@ -480,7 +481,7 @@ streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
   if (!channel) return res.status(404).json({ error: "Channel not found" });
 
   const ffmpeg = spawn(config.ffmpegPath, [
-    ...ffmpegInputOptions("normal", "warning"),
+    ...ffmpegInputOptions("normal"),
     "-map", "0:v:0?",
     "-map", "0:a:0?",
     "-c:v", "libx264",

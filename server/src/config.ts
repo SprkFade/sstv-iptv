@@ -3,6 +3,10 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 const root = process.cwd();
+const ffmpegLogLevels = new Set(["quiet", "panic", "fatal", "error", "warning", "info", "verbose", "debug", "trace"]);
+const ffmpegLogLevel = ffmpegLogLevels.has(process.env.FFMPEG_LOG_LEVEL ?? "")
+  ? process.env.FFMPEG_LOG_LEVEL!
+  : "info";
 
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",
@@ -20,6 +24,7 @@ export const config = {
   plexProductName: "SSTV IPTV",
   plexClientIdentifier: randomUUID(),
   ffmpegPath: process.env.FFMPEG_PATH ?? "ffmpeg",
+  ffmpegLogLevel,
   ffmpegUserAgent: process.env.FFMPEG_USER_AGENT ?? "VLC/3.0.20 LibVLC/3.0.20",
   cookieSecure: process.env.COOKIE_SECURE === "true",
   clientDistPath: process.env.CLIENT_DIST_PATH ?? path.resolve(root, "../client/dist")
