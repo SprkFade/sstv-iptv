@@ -16,6 +16,7 @@ type GuideState = {
   scrollY: number;
   guideScrollLeft: number;
   loadedCount: number;
+  selectedChannelId?: number;
   updatedAt: number;
 };
 
@@ -105,17 +106,27 @@ export function HomePage() {
       ? Math.max(PAGE_SIZE, restoredState.current.loadedCount ?? PAGE_SIZE)
       : PAGE_SIZE;
     initialLoadRef.current = false;
-    loadGuide(0, false, limit)
-      .then(() => {
-        if (restoredScrollRef.current) return;
-        restoredScrollRef.current = true;
-        window.setTimeout(() => {
-          guideScrollRef.current?.scrollTo({ left: restoredState.current.guideScrollLeft ?? 0 });
-          window.scrollTo({ top: restoredState.current.scrollY ?? 0 });
-        }, 50);
-      })
-      .catch(() => undefined);
+    loadGuide(0, false, limit).catch(() => undefined);
   }, [loadGuide]);
+
+  useEffect(() => {
+    if (restoredScrollRef.current || loading || airing.length === 0) return;
+    restoredScrollRef.current = true;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        guideScrollRef.current?.scrollTo({ left: restoredState.current.guideScrollLeft ?? 0 });
+        const selectedChannelId = restoredState.current.selectedChannelId;
+        const selectedRow = selectedChannelId
+          ? document.getElementById(`guide-channel-${selectedChannelId}`)
+          : null;
+        if (selectedRow) {
+          selectedRow.scrollIntoView({ block: "center" });
+        } else {
+          window.scrollTo({ top: restoredState.current.scrollY ?? 0 });
+        }
+      });
+    });
+  }, [airing.length, loading]);
 
   useEffect(() => {
     let frame = 0;
@@ -183,8 +194,8 @@ export function HomePage() {
     saveGuideState({ favoritesOnly: next, scrollY: 0, guideScrollLeft: 0, loadedCount: PAGE_SIZE });
   };
 
-  const rememberBeforeNavigate = () => {
-    saveGuideState();
+  const rememberBeforeNavigate = (channelId?: number) => {
+    saveGuideState({ selectedChannelId: channelId });
   };
 
   return (
@@ -230,7 +241,7 @@ export function HomePage() {
           <h2 className="font-bold">Search results</h2>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             {search.channels.map((channel) => (
-              <Link className="flex items-center gap-3 rounded-md border border-line p-3 hover:border-accent" key={`c-${channel.id}`} to={`/channel/${channel.id}`} onClick={rememberBeforeNavigate}>
+              <Link className="flex items-center gap-3 rounded-md border border-line p-3 hover:border-accent" key={`c-${channel.id}`} to={`/channel/${channel.id}`} onClick={() => rememberBeforeNavigate(channel.id)}>
                 <ChannelLogo src={channel.logo_url} name={channel.display_name} size="sm" />
                 <div className="min-w-0">
                   <div className="truncate font-semibold">{channel.display_name}</div>
@@ -239,7 +250,7 @@ export function HomePage() {
               </Link>
             ))}
             {search.programs.map((program) => (
-              <Link className="rounded-md border border-line p-3 hover:border-accent" key={`p-${program.id}`} to={`/channel/${program.channel_id}`} onClick={rememberBeforeNavigate}>
+              <Link className="rounded-md border border-line p-3 hover:border-accent" key={`p-${program.id}`} to={`/channel/${program.channel_id}`} onClick={() => rememberBeforeNavigate(program.channel_id)}>
                 <div className="truncate font-semibold">{program.title}</div>
                 <div className="truncate text-sm text-ink/60">{program.channel_name}</div>
               </Link>
@@ -258,14 +269,14 @@ export function HomePage() {
               <div className="p-4 text-sm text-ink/60">No channels match this view.</div>
             )}
             {airing.map((item) => (
-          <article key={item.channel_id} className="border-b border-line p-3 last:border-b-0">
+          <article id={`guide-channel-${item.channel_id}`} key={item.channel_id} className="border-b border-line p-3 last:border-b-0">
             <div className="grid grid-cols-[5.5rem_auto_minmax(0,1fr)_auto] items-center gap-3">
               <div className="text-right">
                 <div className="text-xs font-semibold uppercase text-ink/45">CH</div>
                 <div className="text-lg font-bold tabular-nums">{item.channel_number ?? item.sort_order + 1}</div>
               </div>
-              <Link to={`/channel/${item.channel_id}`} onClick={rememberBeforeNavigate}><ChannelLogo src={item.logo_url} name={item.display_name} /></Link>
-              <Link to={`/channel/${item.channel_id}`} className="min-w-0" onClick={rememberBeforeNavigate}>
+              <Link to={`/channel/${item.channel_id}`} onClick={() => rememberBeforeNavigate(item.channel_id)}><ChannelLogo src={item.logo_url} name={item.display_name} /></Link>
+              <Link to={`/channel/${item.channel_id}`} className="min-w-0" onClick={() => rememberBeforeNavigate(item.channel_id)}>
                 <div className="truncate text-sm font-semibold text-ink/60">{item.display_name}</div>
                 <h2 className="truncate text-lg font-bold">{item.title ?? "No guide data"}</h2>
                 <p className="line-clamp-2 text-sm text-ink/70">{item.description ?? item.group_title}</p>
