@@ -58,6 +58,11 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     let lastProgressAt = Date.now();
     let lastRecoveryAt = 0;
     let lastVideoTime = 0;
+    let lastLevelEndSn = -1;
+    let lastLevelLoadedAt = 0;
+    let lastFragmentLoadedAt = Date.now();
+    let lastFragmentSn = -1;
+    let playlistFragmentLagRecoveries = 0;
     let softRecoveries = 0;
     let hardRecoveries = 0;
 
@@ -130,6 +135,23 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       hardRecoveries += 1;
       trace(`hard player reset ${hardRecoveries}/2: ${reason} (${playerState()})`);
       setRetryKey((value) => value + 1);
+    };
+    const restartLiveLoad = (reason: string) => {
+      if (disposed || video.ended) return;
+      const now = Date.now();
+      if (now - lastRecoveryAt < 5000) return;
+      lastRecoveryAt = now;
+      trace(`live reload recovery: ${reason} (${playerState()})`);
+      if (hls?.liveSyncPosition && Number.isFinite(hls.liveSyncPosition)) {
+        video.currentTime = hls.liveSyncPosition;
+      } else if (video.seekable.length > 0) {
+        const liveEdge = video.seekable.end(video.seekable.length - 1);
+        if (Number.isFinite(liveEdge) && liveEdge > 12) video.currentTime = Math.max(0, liveEdge - 12);
+      }
+      hls?.stopLoad();
+      hls?.recoverMediaError();
+      hls?.startLoad(-1);
+      requestPlayback();
     };
     const recoverFromStall = () => {
       if (disposed || video.paused || video.ended) return;
@@ -231,9 +253,17 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
           trace(`manifest loaded levels=${data.levels?.length ?? 0}`);
         });
         hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
+          lastLevelLoadedAt = Date.now();
+          lastLevelEndSn = Number(data.details.endSN);
           trace(`level loaded live=${data.details.live} seq=${data.details.startSN}-${data.details.endSN} window=${data.details.totalduration.toFixed(1)}s`);
         });
         hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
+          const sn = Number(data.frag.sn);
+          if (Number.isFinite(sn)) {
+            lastFragmentSn = sn;
+            lastFragmentLoadedAt = Date.now();
+            playlistFragmentLagRecoveries = 0;
+          }
           trace(`fragment loaded sn=${data.frag.sn} duration=${data.frag.duration.toFixed(1)}s`);
         });
         hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -279,6 +309,19 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
         hls.attachMedia(video);
         watchdogTimer = window.setInterval(() => {
           if (disposed || video.paused || video.ended || !hls) return;
+          const fragmentLag = lastLevelEndSn - lastFragmentSn;
+          const fragmentIdleMs = Date.now() - lastFragmentLoadedAt;
+          const playlistFreshMs = Date.now() - lastLevelLoadedAt;
+          if (lastLevelEndSn > 0 && fragmentLag >= 6 && fragmentIdleMs > 12_000 && playlistFreshMs < 8_000) {
+            playlistFragmentLagRecoveries += 1;
+            trace(`watchdog detected playlist/fragment lag: live sn=${lastLevelEndSn}, last fragment=${lastFragmentSn}, idle=${Math.round(fragmentIdleMs / 1000)}s`);
+            if (playlistFragmentLagRecoveries >= 2) {
+              hardResetPlayer(`playlist advanced ${fragmentLag} segments beyond fragment loader`);
+            } else {
+              restartLiveLoad(`playlist is ${fragmentLag} segments ahead of fragment loader`);
+            }
+            return;
+          }
           const stalledMs = Date.now() - lastProgressAt;
           if (stalledMs > 10_000) {
             trace(`watchdog detected ${Math.round(stalledMs / 1000)}s without playback progress (${playerState()})`);
