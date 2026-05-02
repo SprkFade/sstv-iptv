@@ -1,4 +1,5 @@
 import { Readable } from "node:stream";
+import { finished } from "node:stream/promises";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
@@ -32,6 +33,7 @@ const FFMPEG_TIMESTAMP_OPTIONS = [
   "-use_wallclock_as_timestamps", "1",
   "-dts_delta_threshold", "10"
 ];
+const STREAM_INPUT_RETRY_LIMIT = 12;
 
 function findChannel(channelId: number) {
   return getDb()
@@ -116,6 +118,24 @@ function appendStderr(current: string, message: string) {
   return (current + message).slice(-4000);
 }
 
+function streamInputErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) return "Unknown error";
+  const details = [error.message];
+  const cause = (error as Error & { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    details.push(`cause: ${cause.message}`);
+  } else if (cause && typeof cause === "object") {
+    const entries = ["code", "errno", "syscall", "address", "port"]
+      .map((key) => {
+        const value = (cause as Record<string, unknown>)[key];
+        return value ? `${key}=${String(value)}` : "";
+      })
+      .filter(Boolean);
+    if (entries.length) details.push(`cause: ${entries.join(" ")}`);
+  }
+  return details.join("; ");
+}
+
 function pipeProviderStreamToFfmpeg(
   streamUrl: string,
   ffmpeg: ChildProcessWithoutNullStreams,
@@ -124,32 +144,51 @@ function pipeProviderStreamToFfmpeg(
   const abort = new AbortController();
 
   void (async () => {
-    try {
-      const upstream = await fetch(streamUrl, {
-        signal: abort.signal,
-        headers: {
-          "user-agent": config.ffmpegUserAgent,
-          "accept": "*/*",
-          "icy-metadata": "1"
+    let consecutiveFailures = 0;
+    while (!abort.signal.aborted && ffmpeg.exitCode === null && !ffmpeg.stdin.destroyed) {
+      try {
+        const upstream = await fetch(streamUrl, {
+          signal: abort.signal,
+          headers: {
+            "user-agent": config.ffmpegUserAgent,
+            "accept": "*/*",
+            "icy-metadata": "1"
+          }
+        });
+
+        if (!upstream.ok || !upstream.body) {
+          throw new Error(`Provider stream request failed: ${upstream.status} ${upstream.statusText}`);
         }
-      });
 
-      if (!upstream.ok || !upstream.body) {
-        throw new Error(`Provider stream request failed: ${upstream.status} ${upstream.statusText}`);
+        consecutiveFailures = 0;
+        const input = Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
+        const destroyInput = () => input.destroy();
+        input.on("error", (error) => {
+          if (!abort.signal.aborted) onError(`\nNode stream input error: ${error.message}`);
+        });
+        ffmpeg.stdin.once("error", destroyInput);
+        input.pipe(ffmpeg.stdin, { end: false });
+        try {
+          await finished(input, { cleanup: true });
+        } finally {
+          ffmpeg.stdin.off("error", destroyInput);
+        }
+        if (!abort.signal.aborted && ffmpeg.exitCode === null) {
+          onError("\nProvider stream ended; reconnecting.");
+          await wait(1000);
+        }
+      } catch (error) {
+        if (abort.signal.aborted || ffmpeg.exitCode !== null || ffmpeg.stdin.destroyed) return;
+        consecutiveFailures += 1;
+        const delay = Math.min(10_000, 1000 + consecutiveFailures * 1000);
+        onError(`\nNode stream input failed (${consecutiveFailures}/${STREAM_INPUT_RETRY_LIMIT}): ${streamInputErrorMessage(error)}; retrying in ${Math.round(delay / 1000)}s.`);
+        if (consecutiveFailures >= STREAM_INPUT_RETRY_LIMIT) {
+          onError("\nNode stream input failed too many times; stopping FFmpeg session.");
+          if (!ffmpeg.killed) ffmpeg.kill("SIGTERM");
+          return;
+        }
+        await wait(delay);
       }
-
-      const input = Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
-      input.on("error", (error) => {
-        if (!abort.signal.aborted) onError(`\nNode stream input error: ${error.message}`);
-      });
-      ffmpeg.stdin.on("error", () => {
-        input.destroy();
-      });
-      input.pipe(ffmpeg.stdin);
-    } catch (error) {
-      if (abort.signal.aborted) return;
-      onError(`\nNode stream input failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-      if (!ffmpeg.killed) ffmpeg.kill("SIGTERM");
     }
   })();
 
