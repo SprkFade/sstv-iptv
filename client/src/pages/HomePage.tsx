@@ -447,7 +447,7 @@ export function HomePage() {
             </div>
             <div className="sticky top-0 z-20 h-14 border-b border-line bg-panel">
               <div className="relative h-full" style={{ width: TIMELINE_WIDTH }}>
-                <div className="pointer-events-none absolute bottom-2 z-50 -translate-x-1/2 rounded bg-panel px-1 text-xs font-bold text-accent" style={{ left: currentOffset }}>
+                <div className="pointer-events-none absolute top-1 z-50 -translate-x-1/2 rounded border border-accent/40 bg-panel px-1.5 py-0.5 text-xs font-bold leading-none text-accent shadow-soft" style={{ left: currentOffset }}>
                   Now
                 </div>
                 {timeMarkers.map((marker) => (
