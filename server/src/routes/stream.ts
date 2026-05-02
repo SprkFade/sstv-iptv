@@ -30,7 +30,6 @@ const FFMPEG_PROBE_OPTIONS = [
   "-err_detect", "ignore_err"
 ];
 const FFMPEG_TIMESTAMP_OPTIONS = [
-  "-use_wallclock_as_timestamps", "1",
   "-dts_delta_threshold", "10"
 ];
 const STREAM_INPUT_RETRY_LIMIT = 12;
