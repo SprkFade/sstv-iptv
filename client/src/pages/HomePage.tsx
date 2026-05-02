@@ -461,10 +461,7 @@ export function HomePage() {
               style={{ left: channelColumnWidth + currentOffset }}
             />
             <div className="sticky left-0 top-0 z-[60] flex h-14 items-center border-b border-r border-line bg-panel px-4">
-              <div>
-                <div className="text-sm font-bold">Channels</div>
-                <div className="text-xs text-ink/50">Back 2h / forward 12h</div>
-              </div>
+              <div className="text-sm font-bold">Channels</div>
             </div>
             <div className="sticky top-0 z-50 h-14 border-b border-line bg-panel">
               <div className="relative h-full" style={{ width: TIMELINE_WIDTH }}>
