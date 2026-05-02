@@ -15,6 +15,10 @@ adminRouter.get("/settings", async (_req, res, next) => {
       xmltvUrl: setting("xmltv_url"),
       refreshIntervalHours: Number(setting("refresh_interval_hours", "12")),
       plexServerIdentifier: setting("plex_server_identifier"),
+      ffmpegHlsInputMode: setting("ffmpeg_hls_input_mode", "direct"),
+      ffmpegReconnectDelayMax: Number(setting("ffmpeg_reconnect_delay_max", "5")),
+      ffmpegRwTimeoutSeconds: Number(setting("ffmpeg_rw_timeout_seconds", "15")),
+      ffmpegStaleRestartSeconds: Number(setting("ffmpeg_stale_restart_seconds", "30")),
       plex: await plexAdminStatus()
     });
   } catch (error) {
@@ -28,7 +32,11 @@ const settingsSchema = z.object({
   xcPassword: z.string().max(500).optional().default(""),
   xmltvUrl: z.string().url().or(z.literal("")),
   refreshIntervalHours: z.number().int().min(1).max(168),
-  plexServerIdentifier: z.string().optional().default("")
+  plexServerIdentifier: z.string().optional().default(""),
+  ffmpegHlsInputMode: z.enum(["direct", "pipe"]).optional().default("direct"),
+  ffmpegReconnectDelayMax: z.number().int().min(1).max(60).optional().default(5),
+  ffmpegRwTimeoutSeconds: z.number().int().min(5).max(120).optional().default(15),
+  ffmpegStaleRestartSeconds: z.number().int().min(0).max(300).optional().default(30)
 });
 
 adminRouter.put("/settings", (req, res) => {
@@ -39,6 +47,10 @@ adminRouter.put("/settings", (req, res) => {
   setSetting("xmltv_url", body.xmltvUrl);
   setSetting("refresh_interval_hours", String(body.refreshIntervalHours));
   setSetting("plex_server_identifier", body.plexServerIdentifier);
+  setSetting("ffmpeg_hls_input_mode", body.ffmpegHlsInputMode);
+  setSetting("ffmpeg_reconnect_delay_max", String(body.ffmpegReconnectDelayMax));
+  setSetting("ffmpeg_rw_timeout_seconds", String(body.ffmpegRwTimeoutSeconds));
+  setSetting("ffmpeg_stale_restart_seconds", String(body.ffmpegStaleRestartSeconds));
   res.json({ ok: true });
 });
 

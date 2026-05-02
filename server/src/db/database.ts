@@ -138,6 +138,10 @@ function seedSettings() {
   insert.run("plex_token", config.plexToken);
   insert.run("plex_product_name", config.plexProductName);
   insert.run("plex_client_identifier", config.plexClientIdentifier);
+  insert.run("ffmpeg_hls_input_mode", config.ffmpegHlsInputMode);
+  insert.run("ffmpeg_reconnect_delay_max", String(config.ffmpegReconnectDelayMax));
+  insert.run("ffmpeg_rw_timeout_seconds", String(config.ffmpegRwTimeoutSeconds));
+  insert.run("ffmpeg_stale_restart_seconds", String(config.ffmpegStaleRestartSeconds));
   insert.run("setup_complete", "false");
 }
 

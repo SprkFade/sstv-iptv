@@ -99,6 +99,12 @@ export interface StreamStatus {
       lastSegmentName: string;
     };
     runtimeMs: number;
+    settings: {
+      inputMode: "ffmpeg-direct" | "node-pipe";
+      reconnectDelayMax: number;
+      rwTimeoutSeconds: number;
+      staleRestartSeconds: number;
+    };
     startedAt: string;
     tempFiles: string[];
   };
@@ -176,9 +182,24 @@ export const api = {
     xmltvUrl: string;
     refreshIntervalHours: number;
     plexServerIdentifier: string;
+    ffmpegHlsInputMode: "direct" | "pipe";
+    ffmpegReconnectDelayMax: number;
+    ffmpegRwTimeoutSeconds: number;
+    ffmpegStaleRestartSeconds: number;
     plex: { configured: boolean; serverReachable: boolean };
   }>("/api/admin/settings"),
-  saveSettings: (body: { xcBaseUrl: string; xcUsername: string; xcPassword?: string; xmltvUrl: string; refreshIntervalHours: number; plexServerIdentifier: string }) =>
+  saveSettings: (body: {
+    xcBaseUrl: string;
+    xcUsername: string;
+    xcPassword?: string;
+    xmltvUrl: string;
+    refreshIntervalHours: number;
+    plexServerIdentifier: string;
+    ffmpegHlsInputMode: "direct" | "pipe";
+    ffmpegReconnectDelayMax: number;
+    ffmpegRwTimeoutSeconds: number;
+    ffmpegStaleRestartSeconds: number;
+  }) =>
     request<{ ok: true }>("/api/admin/settings", { method: "PUT", body: JSON.stringify(body) }),
   refresh: () => request<{ started: boolean; progress: RefreshProgress }>("/api/admin/refresh", { method: "POST" }),
   refreshStatus: () => request<RefreshProgress>("/api/admin/refresh-status"),

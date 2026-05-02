@@ -70,6 +70,8 @@ Set a long random `SESSION_SECRET` before exposing the app.
 
 `FFMPEG_PATH` defaults to `ffmpeg`. The published Docker image includes FFmpeg for desktop live transcoding. `FFMPEG_LOG_LEVEL` defaults to `info`; use `verbose` or `debug` temporarily when diagnosing stream lockups. `FFMPEG_USER_AGENT` defaults to a VLC-style user agent for IPTV provider compatibility.
 
+Stream proxy defaults can be set with `FFMPEG_HLS_INPUT_MODE`, `FFMPEG_RECONNECT_DELAY_MAX`, `FFMPEG_RW_TIMEOUT_SECONDS`, and `FFMPEG_STALE_RESTART_SECONDS`, then edited later from the Admin page. Direct FFmpeg input is the default; switch to `pipe` only if a provider behaves better through the Node fallback.
+
 ## Data Persistence
 
 The compose file uses bind mounts only:

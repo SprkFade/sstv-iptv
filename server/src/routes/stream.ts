@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { Router } from "express";
 import { config } from "../config.js";
-import { getDb } from "../db/database.js";
+import { getDb, setting } from "../db/database.js";
 import type { AuthedRequest } from "../types/app.js";
 
 export const streamRouter = Router();
@@ -37,6 +37,13 @@ type HlsSession = {
 type HlsMode = "normal" | "videoOnly";
 type HlsInputMode = "ffmpeg-direct" | "node-pipe";
 
+type HlsRuntimeSettings = {
+  inputMode: HlsInputMode;
+  reconnectDelayMax: number;
+  rwTimeoutSeconds: number;
+  staleRestartSeconds: number;
+};
+
 const hlsSessions = new Map<number, HlsSession>();
 const hlsFallbackModes = new Map<number, { mode: HlsMode; streamUrl: string }>();
 const HLS_IDLE_TIMEOUT_MS = 30 * 1000;
@@ -58,6 +65,21 @@ const FFMPEG_TIMESTAMP_OPTIONS = [
 const STREAM_INPUT_RETRY_LIMIT = 12;
 const STREAM_LOG_BUFFER_LENGTH = 16_000;
 const STREAM_EVENT_BUFFER_LENGTH = 80;
+
+function boundedInt(value: string, fallback: number, min: number, max: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(parsed)));
+}
+
+function hlsRuntimeSettings(): HlsRuntimeSettings {
+  return {
+    inputMode: setting("ffmpeg_hls_input_mode", config.ffmpegHlsInputMode) === "pipe" ? "node-pipe" : "ffmpeg-direct",
+    reconnectDelayMax: boundedInt(setting("ffmpeg_reconnect_delay_max", String(config.ffmpegReconnectDelayMax)), 5, 1, 60),
+    rwTimeoutSeconds: boundedInt(setting("ffmpeg_rw_timeout_seconds", String(config.ffmpegRwTimeoutSeconds)), 15, 5, 120),
+    staleRestartSeconds: boundedInt(setting("ffmpeg_stale_restart_seconds", String(config.ffmpegStaleRestartSeconds)), 30, 0, 300)
+  };
+}
 
 function findChannel(channelId: number) {
   return getDb()
@@ -275,7 +297,7 @@ function ffmpegInputOptions(mode: HlsMode, logLevel = config.ffmpegLogLevel) {
   ];
 }
 
-function ffmpegDirectInputOptions(streamUrl: string, mode: HlsMode, logLevel = config.ffmpegLogLevel) {
+function ffmpegDirectInputOptions(streamUrl: string, mode: HlsMode, runtime: HlsRuntimeSettings, logLevel = config.ffmpegLogLevel) {
   const isHttpStream = /^https?:\/\//i.test(streamUrl);
   return [
     "-hide_banner",
@@ -287,8 +309,8 @@ function ffmpegDirectInputOptions(streamUrl: string, mode: HlsMode, logLevel = c
       "-reconnect", "1",
       "-reconnect_streamed", "1",
       "-reconnect_at_eof", "1",
-      "-reconnect_delay_max", "5",
-      "-rw_timeout", "15000000"
+      "-reconnect_delay_max", String(runtime.reconnectDelayMax),
+      "-rw_timeout", String(runtime.rwTimeoutSeconds * 1_000_000)
     ] : []),
     "-fflags", "+genpts+igndts+discardcorrupt",
     ...(mode === "videoOnly" ? FFMPEG_VIDEO_ONLY_PROBE_OPTIONS : FFMPEG_NORMAL_PROBE_OPTIONS),
@@ -376,15 +398,39 @@ function buildTrace(session: HlsSession, files: Array<{ name: string; size: numb
       lastSegmentName: session.requestStats.lastSegmentName
     },
     runtimeMs: now - session.startedAt,
+    settings: hlsRuntimeSettings(),
     startedAt: new Date(session.startedAt).toISOString(),
     tempFiles
   };
 }
 
+function latestCompleteSegmentAgeMs(session: HlsSession) {
+  try {
+    const latest = fs
+      .readdirSync(session.dir)
+      .filter((name) => /^segment_\d{5}\.ts$/.test(name))
+      .sort()
+      .at(-1);
+    if (!latest) return null;
+    return Date.now() - fs.statSync(path.join(session.dir, latest)).mtime.getTime();
+  } catch {
+    return null;
+  }
+}
+
+function shouldRestartStaleHlsSession(session: HlsSession, runtime: HlsRuntimeSettings) {
+  if (runtime.staleRestartSeconds <= 0 || session.exited) return false;
+  const ageMs = latestCompleteSegmentAgeMs(session);
+  const thresholdMs = runtime.staleRestartSeconds * 1000;
+  if (ageMs === null) return Date.now() - session.startedAt > thresholdMs;
+  return ageMs > thresholdMs && Date.now() - session.startedAt > thresholdMs;
+}
+
 function ensureHlsSession(channelId: number, streamUrl: string) {
   const existing = hlsSessions.get(channelId);
   const mode = hlsModeForChannel(channelId, streamUrl);
-  if (existing && !existing.exited && existing.streamUrl === streamUrl && existing.mode === mode) {
+  const runtime = hlsRuntimeSettings();
+  if (existing && !existing.exited && existing.streamUrl === streamUrl && existing.mode === mode && existing.inputMode === runtime.inputMode) {
     existing.lastAccess = Date.now();
     return existing;
   }
@@ -398,7 +444,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   const playlistPath = path.join(dir, "index.m3u8");
   const segmentPattern = "segment_%05d.ts";
   const ffmpeg = spawn(config.ffmpegPath, [
-    ...ffmpegDirectInputOptions(streamUrl, mode),
+    ...(runtime.inputMode === "ffmpeg-direct" ? ffmpegDirectInputOptions(streamUrl, mode, runtime) : ffmpegInputOptions(mode)),
     ...hlsOutputOptions(mode),
     "-max_muxing_queue_size", "1024",
     "-avoid_negative_ts", "make_zero",
@@ -413,7 +459,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-hls_segment_filename", segmentPattern,
     "index.m3u8"
   ], { cwd: dir, stdio: ["pipe", "pipe", "pipe"] });
-  ffmpeg.stdin.end();
+  if (runtime.inputMode === "ffmpeg-direct") ffmpeg.stdin.end();
 
   const session: HlsSession = {
     dir,
@@ -422,7 +468,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     exitCode: null,
     inputBytes: 0,
     inputAbort: null,
-    inputMode: "ffmpeg-direct",
+    inputMode: runtime.inputMode,
     lastInputAt: null,
     lastAccess: Date.now(),
     mode,
@@ -438,7 +484,17 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     stderr: mode === "videoOnly" ? "Malformed EAC3 audio was detected earlier; using video-only fallback for this channel.\n" : "",
     streamUrl
   };
-  recordSessionEvent(session, `Started FFmpeg HLS session in ${mode} mode using direct FFmpeg input.`);
+  recordSessionEvent(session, `Started FFmpeg HLS session in ${mode} mode using ${runtime.inputMode === "ffmpeg-direct" ? "direct FFmpeg input" : "Node pipe input"}.`);
+
+  if (runtime.inputMode === "node-pipe") {
+    session.inputAbort = pipeProviderStreamToFfmpeg(streamUrl, ffmpeg, (message) => {
+      session.stderr = appendStderr(session.stderr, message);
+      recordSessionEvent(session, message.trim());
+    }, (bytes) => {
+      session.inputBytes += bytes;
+      session.lastInputAt = Date.now();
+    });
+  }
 
   ffmpeg.stderr.setEncoding("utf8");
   ffmpeg.stderr.on("data", (chunk: string) => {
@@ -547,8 +603,14 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
   if (!channel) return res.status(404).json({ error: "Channel not found" });
 
   try {
-    const session = ensureHlsSession(channelId, channel.stream_url);
+    let session = ensureHlsSession(channelId, channel.stream_url);
     session.lastAccess = Date.now();
+    if (file === "index.m3u8" && shouldRestartStaleHlsSession(session, hlsRuntimeSettings())) {
+      recordSessionEvent(session, "HLS producer appears stale; restarting FFmpeg session.");
+      stopHlsSession(channelId);
+      session = ensureHlsSession(channelId, channel.stream_url);
+      session.lastAccess = Date.now();
+    }
     if (file === "index.m3u8") {
       session.requestStats.playlist += 1;
       session.requestStats.lastPlaylistAt = Date.now();
