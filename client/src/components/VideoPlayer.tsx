@@ -171,6 +171,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
     let hardRecoveries = 0;
     let nativeGapRecoveries = 0;
     let wakeLock: ScreenWakeLockSentinel | null = null;
+    let audioOnlyStream = false;
     const release = () => releaseStreamClient(channelId, clientSession);
 
     const trace = (message: string) => {
@@ -192,6 +193,15 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
         }
       }
       return null;
+    };
+    const bufferedAheadSeconds = () => {
+      const current = video.currentTime;
+      for (let index = 0; index < video.buffered.length; index += 1) {
+        const start = video.buffered.start(index);
+        const end = video.buffered.end(index);
+        if (current >= start && current <= end) return Math.max(0, end - current);
+      }
+      return 0;
     };
     const setPlaybackError = (message: string) => {
       trace(`error: ${message} (${playerState()})`);
@@ -251,12 +261,14 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
           });
           if (response.ok) {
             const playlist = await response.text();
+            audioOnlyStream = response.headers.get("x-sstv-hls-mode") === "audioOnly";
             const segmentCount = playlist.match(/segment_\d{5}\.ts/g)?.length ?? 0;
-            if (playlist.includes("#EXTINF") && segmentCount >= 2) {
+            const requiredSegments = audioOnlyStream ? 6 : 2;
+            if (playlist.includes("#EXTINF") && segmentCount >= requiredSegments) {
               trace(`prepared HLS playlist with ${segmentCount} segments`);
               return;
             }
-            lastError = `FFmpeg is preparing the first media segments (${segmentCount}/2).`;
+            lastError = `FFmpeg is preparing the first ${audioOnlyStream ? "audio" : "media"} segments (${segmentCount}/${requiredSegments}).`;
           } else {
             lastError = `FFmpeg HLS is not ready yet (${response.status}).`;
           }
@@ -358,6 +370,11 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
     };
     const scheduleStallRecovery = () => {
       if (mobile) return;
+      const bufferedAhead = bufferedAheadSeconds();
+      if (audioOnlyStream && bufferedAhead > 3) {
+        trace(`audio-only stall ignored with ${bufferedAhead.toFixed(1)}s buffered ahead (${playerState()})`);
+        return;
+      }
       trace(`video stalled/waiting; recovery scheduled (${playerState()})`);
       if (jumpNativeHlsGap("buffer gap detected")) return;
       clearStallTimer();

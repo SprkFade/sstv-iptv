@@ -177,7 +177,7 @@ async function waitForFile(filePath: string, timeoutMs: number) {
   throw new Error(`Timed out waiting for ${path.basename(filePath)}`);
 }
 
-async function waitForReadyPlaylist(dir: string, timeoutMs: number) {
+async function waitForReadyPlaylist(dir: string, timeoutMs: number, minSegments = 2) {
   const started = Date.now();
   const playlistPath = path.join(dir, "index.m3u8");
   while (Date.now() - started < timeoutMs) {
@@ -188,8 +188,8 @@ async function waitForReadyPlaylist(dir: string, timeoutMs: number) {
         .map((line) => line.trim())
         .filter((line) => /^segment_\d{5}\.ts$/.test(line));
 
-      if (segments.length >= 2) {
-        const readySegments = await Promise.all(segments.slice(-2).map(async (segment) => {
+      if (segments.length >= minSegments) {
+        const readySegments = await Promise.all(segments.slice(-minSegments).map(async (segment) => {
           try {
             const stat = await fs.promises.stat(path.join(dir, segment));
             return stat.size > 0;
@@ -1186,7 +1186,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
 
     const filePath = path.join(session.dir, file);
     if (file === "index.m3u8") {
-      await waitForReadyPlaylist(session.dir, 20_000);
+      await waitForReadyPlaylist(session.dir, session.mode === "audioOnly" ? 30_000 : 20_000, session.mode === "audioOnly" ? 6 : 2);
     } else {
       await waitForFile(filePath, 10_000);
     }
@@ -1197,6 +1197,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
     res.setHeader("pragma", "no-cache");
     res.setHeader("expires", "0");
     res.setHeader("x-accel-buffering", "no");
+    res.setHeader("x-sstv-hls-mode", session.mode);
     if (file.endsWith(".m3u8")) {
       res.type("application/vnd.apple.mpegurl");
       const playlist = await fs.promises.readFile(filePath, "utf8");
