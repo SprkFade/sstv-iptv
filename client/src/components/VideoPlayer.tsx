@@ -162,6 +162,10 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     };
     const requestPlayback = () => {
       if (disposed) return;
+      if (mobile) {
+        trace(`mobile playback left to native controls (${playerState()})`);
+        return;
+      }
       trace(`play requested (${playerState()})`);
       const playRequest = video.play();
       if (playRequest) {
@@ -274,7 +278,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
         if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = transcodeHlsSrc;
           trace("using native HLS playback");
-          video.addEventListener("canplay", requestPlayback, { once: true });
+          if (!mobile) video.addEventListener("canplay", requestPlayback, { once: true });
           return;
         }
 
@@ -359,11 +363,12 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
         });
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           trace("hls.js manifest parsed");
-          requestPlayback();
+          if (!mobile) requestPlayback();
         });
         hls.attachMedia(video);
         watchdogTimer = window.setInterval(() => {
           if (disposed || video.paused || video.ended || !hls) return;
+          if (mobile) return;
           const fragmentLag = lastLevelEndSn - lastFragmentSn;
           const fragmentIdleMs = Date.now() - lastFragmentLoadedAt;
           const playlistFreshMs = Date.now() - lastLevelLoadedAt;
