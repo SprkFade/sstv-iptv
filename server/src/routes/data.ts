@@ -51,6 +51,7 @@ dataRouter.get("/channels", (req: AuthedRequest, res) => {
 
 dataRouter.get("/guide/current", (req: AuthedRequest, res) => {
   const at = typeof req.query.at === "string" ? new Date(req.query.at).toISOString() : nowIso();
+  const start = typeof req.query.start === "string" ? new Date(req.query.start).toISOString() : at;
   const end = typeof req.query.end === "string"
     ? new Date(req.query.end).toISOString()
     : new Date(new Date(at).getTime() + 12 * 60 * 60 * 1000).toISOString();
@@ -108,7 +109,7 @@ dataRouter.get("/guide/current", (req: AuthedRequest, res) => {
            AND start_time < ?
          ORDER BY channel_id, start_time, end_time, id`
       )
-      .all(...channelIds, at, end) as Array<Record<string, unknown> & { channel_id: number }>;
+      .all(...channelIds, start, end) as Array<Record<string, unknown> & { channel_id: number }>;
     for (const program of programs) {
       const list = programsByChannel.get(program.channel_id) ?? [];
       list.push(program);
@@ -131,7 +132,7 @@ dataRouter.get("/guide/current", (req: AuthedRequest, res) => {
     )
     .get(...(req.user ? [req.user.id] : []), ...params) as { count: number };
 
-  res.json({ airing, at, end, total: total.count, limit, offset, hasMore: offset + rows.length < total.count });
+  res.json({ airing, at, start, end, total: total.count, limit, offset, hasMore: offset + rows.length < total.count });
 });
 
 dataRouter.get("/guide/channel/:id", (req: AuthedRequest, res) => {

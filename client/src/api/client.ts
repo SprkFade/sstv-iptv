@@ -157,7 +157,7 @@ export const api = {
   logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
   createPlexPin: () => request<{ id: number; code: string; authUrl: string }>("/api/auth/plex/pin", { method: "POST" }),
   pollPlexPin: (id: number) => request<{ authenticated: boolean }>(`/api/auth/plex/pin/${id}`),
-  currentGuide: (params = "") => request<{ airing: Airing[]; at: string; end: string; total: number; limit: number; offset: number; hasMore: boolean }>(`/api/guide/current${params}`),
+  currentGuide: (params = "") => request<{ airing: Airing[]; at: string; start: string; end: string; total: number; limit: number; offset: number; hasMore: boolean }>(`/api/guide/current${params}`),
   channels: (params = "") => request<{ channels: Channel[]; groups: string[] }>(`/api/channels${params}`),
   channelGuide: (id: string) => request<{ channel: Channel; programs: Program[] }>(`/api/guide/channel/${id}`),
   search: (q: string) => request<{ channels: Channel[]; programs: Array<Program & { channel_id: number; channel_name: string; logo_url: string }> }>(`/api/search?q=${encodeURIComponent(q)}`),

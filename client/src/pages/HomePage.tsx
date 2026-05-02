@@ -7,10 +7,12 @@ import { FavoriteButton } from "../components/FavoriteButton";
 
 const PAGE_SIZE = 25;
 const GUIDE_STATE_KEY = "sstv-guide-state";
-const GUIDE_HOURS = 12;
+const GUIDE_FUTURE_HOURS = 12;
+const GUIDE_LOOKBACK_HOURS = 2;
+const GUIDE_TOTAL_HOURS = GUIDE_LOOKBACK_HOURS + GUIDE_FUTURE_HOURS;
 const MINUTE_WIDTH = 5;
-const CHANNEL_COLUMN_WIDTH = 188;
-const TIMELINE_WIDTH = GUIDE_HOURS * 60 * MINUTE_WIDTH;
+const CHANNEL_COLUMN_WIDTH = 260;
+const TIMELINE_WIDTH = GUIDE_TOTAL_HOURS * 60 * MINUTE_WIDTH;
 
 type GuideState = {
   activeGroup: string;
@@ -62,7 +64,7 @@ function minutesBetween(start: Date, end: Date) {
 }
 
 function buildTimeMarkers(start: Date) {
-  const end = new Date(start.getTime() + GUIDE_HOURS * 60 * 60 * 1000);
+  const end = new Date(start.getTime() + GUIDE_TOTAL_HOURS * 60 * 60 * 1000);
   const first = new Date(start);
   const minute = first.getMinutes();
   const nextHalfHour = minute === 0 || minute === 30 ? minute : minute < 30 ? 30 : 60;
@@ -93,8 +95,9 @@ function currentProgram(item: Airing) {
 
 export function HomePage() {
   const restoredState = useRef(readGuideState());
-  const guideStartRef = useRef(new Date());
-  const guideEndRef = useRef(new Date(guideStartRef.current.getTime() + GUIDE_HOURS * 60 * 60 * 1000));
+  const guideNowRef = useRef(new Date());
+  const guideStartRef = useRef(new Date(guideNowRef.current.getTime() - GUIDE_LOOKBACK_HOURS * 60 * 60 * 1000));
+  const guideEndRef = useRef(new Date(guideNowRef.current.getTime() + GUIDE_FUTURE_HOURS * 60 * 60 * 1000));
   const [airing, setAiring] = useState<Airing[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
   const [activeGroup, setActiveGroup] = useState(() => restoredState.current.activeGroup ?? "");
@@ -148,7 +151,8 @@ export function HomePage() {
 
   const guideParams = useCallback((offset: number, limit = PAGE_SIZE) => {
     const searchParams = new URLSearchParams({
-      at: guideStartRef.current.toISOString(),
+      at: guideNowRef.current.toISOString(),
+      start: guideStartRef.current.toISOString(),
       end: guideEndRef.current.toISOString(),
       limit: String(limit),
       offset: String(offset)
@@ -201,7 +205,10 @@ export function HomePage() {
     if (restoredScrollRef.current || loading || airing.length === 0) return;
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        guideScrollRef.current?.scrollTo({ left: restoredState.current.guideScrollLeft ?? 0 });
+        const restoredLeft = typeof restoredState.current.guideScrollLeft === "number" && restoredState.current.guideScrollLeft > 0
+          ? restoredState.current.guideScrollLeft
+          : initialNowOffset;
+        guideScrollRef.current?.scrollTo({ left: restoredLeft });
         const selectedChannelId = selectedChannelIdRef.current;
         const selectedRow = selectedChannelId
           ? document.getElementById(`guide-channel-${selectedChannelId}`)
@@ -287,8 +294,8 @@ export function HomePage() {
     selectedChannelIdRef.current = undefined;
     setHasMore(false);
     setActiveGroup(group);
-    channelListRef.current?.scrollTo({ top: 0 });
-    saveGuideState({ activeGroup: group, scrollY: 0, guideScrollLeft: 0, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
+    channelListRef.current?.scrollTo({ left: initialNowOffset, top: 0 });
+    saveGuideState({ activeGroup: group, scrollY: 0, guideScrollLeft: GUIDE_LOOKBACK_HOURS * 60 * MINUTE_WIDTH, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
   const toggleFavoritesOnly = () => {
@@ -298,8 +305,8 @@ export function HomePage() {
     selectedChannelIdRef.current = undefined;
     setHasMore(false);
     setFavoritesOnly(next);
-    channelListRef.current?.scrollTo({ top: 0 });
-    saveGuideState({ favoritesOnly: next, scrollY: 0, guideScrollLeft: 0, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
+    channelListRef.current?.scrollTo({ left: initialNowOffset, top: 0 });
+    saveGuideState({ favoritesOnly: next, scrollY: 0, guideScrollLeft: GUIDE_LOOKBACK_HOURS * 60 * MINUTE_WIDTH, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
   const rememberBeforeNavigate = (channelId?: number) => {
@@ -319,6 +326,7 @@ export function HomePage() {
   const searchResultCount = (search?.channels.length ?? 0) + (search?.programs.length ?? 0);
   const timeMarkers = buildTimeMarkers(guideStartRef.current);
   const currentOffset = Math.max(0, Math.min(TIMELINE_WIDTH, minutesBetween(guideStartRef.current, now) * MINUTE_WIDTH));
+  const initialNowOffset = GUIDE_LOOKBACK_HOURS * 60 * MINUTE_WIDTH;
   const guideTemplateColumns = `${CHANNEL_COLUMN_WIDTH}px ${TIMELINE_WIDTH}px`;
 
   return (
@@ -430,7 +438,7 @@ export function HomePage() {
             <div className="sticky left-0 top-0 z-30 flex h-14 items-center border-b border-r border-line bg-panel px-4">
               <div>
                 <div className="text-sm font-bold">Channels</div>
-                <div className="text-xs text-ink/50">Now + 12 hours</div>
+                <div className="text-xs text-ink/50">Back 2h / forward 12h</div>
               </div>
             </div>
             <div className="sticky top-0 z-20 h-14 border-b border-line bg-panel">
@@ -457,7 +465,7 @@ export function HomePage() {
               const programs = item.programs ?? [];
               return (
                 <article id={`guide-channel-${item.channel_id}`} key={item.channel_id} className="contents">
-                  <div className="sticky left-0 z-10 grid min-h-24 grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-r border-line bg-panel px-3">
+                  <div className="sticky left-0 z-10 grid min-h-24 grid-cols-[4rem_minmax(0,1fr)_2.75rem] items-center gap-3 border-b border-r border-line bg-panel px-3">
                     <Link to={`/channel/${item.channel_id}`} onClick={() => rememberBeforeNavigate(item.channel_id)}>
                       <ChannelLogo src={item.logo_url} name={item.display_name} size="sm" />
                     </Link>
