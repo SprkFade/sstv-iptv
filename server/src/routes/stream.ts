@@ -27,10 +27,16 @@ type HlsMode = "normal" | "videoOnly";
 const hlsSessions = new Map<number, HlsSession>();
 const hlsFallbackModes = new Map<number, { mode: HlsMode; streamUrl: string }>();
 const HLS_IDLE_TIMEOUT_MS = 30 * 1000;
-const FFMPEG_PROBE_OPTIONS = [
+const FFMPEG_NORMAL_PROBE_OPTIONS = [
   "-analyzeduration", "8000000",
   "-probesize", "8000000",
   "-max_probe_packets", "100000",
+  "-err_detect", "ignore_err"
+];
+const FFMPEG_VIDEO_ONLY_PROBE_OPTIONS = [
+  "-analyzeduration", "4000000",
+  "-probesize", "4000000",
+  "-max_probe_packets", "50000",
   "-err_detect", "ignore_err"
 ];
 const FFMPEG_TIMESTAMP_OPTIONS = [
@@ -232,6 +238,20 @@ function hlsModeForChannel(channelId: number, streamUrl: string): HlsMode {
   return fallback?.streamUrl === streamUrl ? fallback.mode : "normal";
 }
 
+function ffmpegInputOptions(mode: HlsMode, logLevel: "warning" | "error") {
+  return [
+    "-hide_banner",
+    "-nostats",
+    "-loglevel", logLevel,
+    "-fflags", "+genpts+igndts+discardcorrupt",
+    ...(mode === "videoOnly" ? FFMPEG_VIDEO_ONLY_PROBE_OPTIONS : FFMPEG_NORMAL_PROBE_OPTIONS),
+    ...FFMPEG_TIMESTAMP_OPTIONS,
+    "-i", "pipe:0",
+    "-dn",
+    "-sn"
+  ];
+}
+
 function hlsOutputOptions(mode: HlsMode) {
   const videoOptions = [
     "-map", "0:v:0?",
@@ -285,15 +305,11 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   const playlistPath = path.join(dir, "index.m3u8");
   const segmentPattern = "segment_%05d.ts";
   const ffmpeg = spawn(config.ffmpegPath, [
-    "-hide_banner",
-    "-loglevel", mode === "videoOnly" ? "error" : "warning",
-    "-fflags", "+genpts+igndts+discardcorrupt",
-    ...FFMPEG_PROBE_OPTIONS,
-    ...FFMPEG_TIMESTAMP_OPTIONS,
-    "-i", "pipe:0",
+    ...ffmpegInputOptions(mode, mode === "videoOnly" ? "error" : "warning"),
     ...hlsOutputOptions(mode),
     "-max_muxing_queue_size", "1024",
     "-avoid_negative_ts", "make_zero",
+    "-flush_packets", "1",
     "-muxdelay", "0",
     "-muxpreload", "0",
     "-f", "hls",
@@ -464,12 +480,7 @@ streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
   if (!channel) return res.status(404).json({ error: "Channel not found" });
 
   const ffmpeg = spawn(config.ffmpegPath, [
-    "-hide_banner",
-    "-loglevel", "warning",
-    "-fflags", "+genpts+igndts+discardcorrupt",
-    ...FFMPEG_PROBE_OPTIONS,
-    ...FFMPEG_TIMESTAMP_OPTIONS,
-    "-i", "pipe:0",
+    ...ffmpegInputOptions("normal", "warning"),
     "-map", "0:v:0?",
     "-map", "0:a:0?",
     "-c:v", "libx264",
@@ -484,6 +495,7 @@ streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
     "-b:a", "128k",
     "-ac", "2",
     "-ar", "48000",
+    "-flush_packets", "1",
     "-f", "mpegts",
     "pipe:1"
   ], { stdio: ["pipe", "pipe", "pipe"] });
