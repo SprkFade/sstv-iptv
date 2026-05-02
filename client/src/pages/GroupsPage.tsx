@@ -328,7 +328,7 @@ export function GroupsPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold">Default group sort</h2>
-                <p className="mt-1 text-sm text-ink/60">Drag prefixes into the order groups should use when applying the default sort.</p>
+                <p className="mt-1 text-sm text-ink/60">Drag prefixes and standalone group names into the default sort order.</p>
               </div>
               <button
                 className="grid size-9 shrink-0 place-items-center rounded-md border border-line hover:bg-ink/5"
@@ -341,7 +341,7 @@ export function GroupsPage() {
             <div className="mt-4 grid min-h-0 gap-2 overflow-y-auto pr-1 scrollbar-none">
               {prefixOrder.length === 0 ? (
                 <div className="rounded-md border border-line bg-mist p-4 text-sm text-ink/60">
-                  No group prefixes were found. Prefixes are detected from group names like US | News.
+                  No group prefixes or standalone group names were found.
                 </div>
               ) : prefixOrder.map((prefix, index) => (
                 <div

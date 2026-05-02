@@ -13,17 +13,21 @@ function compareNatural(a: string, b: string) {
 }
 
 function groupPrefix(name: string) {
-  const match = name.match(/^\s*([A-Za-z0-9]+)\s*\|/);
+  const match = name.match(/^\s*([^|]+?)\s*\|/);
   return match?.[1]?.toUpperCase() ?? "";
 }
 
-function defaultSortRank(name: string, prefixOrder: string[]) {
+function groupSortKey(name: string) {
   const prefix = groupPrefix(name);
-  if (!prefix) return { bucket: 2, prefix: "", prefixRank: Number.MAX_SAFE_INTEGER };
-  const knownIndex = prefixOrder.indexOf(prefix);
+  return prefix || name.trim().toUpperCase();
+}
+
+function defaultSortRank(name: string, prefixOrder: string[]) {
+  const key = groupSortKey(name);
+  const knownIndex = prefixOrder.indexOf(key);
   return {
-    bucket: knownIndex >= 0 ? 0 : 1,
-    prefix,
+    bucket: knownIndex >= 0 ? 0 : groupPrefix(name) ? 1 : 2,
+    prefix: key,
     prefixRank: knownIndex >= 0 ? knownIndex : Number.MAX_SAFE_INTEGER
   };
 }
@@ -138,7 +142,7 @@ export function recalculateChannelNumbers(database: Database.Database) {
 export function listGroupPrefixes(database: Database.Database) {
   ensureChannelGroups(database, false);
   const groups = database.prepare("SELECT name FROM channel_groups").all() as Array<{ name: string }>;
-  const detected = Array.from(new Set(groups.map((group) => groupPrefix(group.name)).filter(Boolean))).sort(compareNatural);
+  const detected = Array.from(new Set(groups.map((group) => groupSortKey(group.name)).filter(Boolean))).sort(compareNatural);
   const configured = readPrefixOrder(database);
   const configuredSet = new Set(configured);
   const order = [
