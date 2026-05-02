@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, Database, RefreshCw, Server, Users } from "lucide-react";
+import { Activity, ChevronDown, Database, RefreshCw, Server, Users } from "lucide-react";
 import { api, type RefreshProgress } from "../api/client";
 
 type Settings = Awaited<ReturnType<typeof api.settings>>;
@@ -118,7 +118,7 @@ export function AdminPage() {
         {message && <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>}
         {error && <div className="mb-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
         <form
-          className="grid gap-3"
+          className="grid min-w-0 max-w-full gap-3"
           onSubmit={async (event) => {
             event.preventDefault();
             setMessage("");
@@ -161,20 +161,23 @@ export function AdminPage() {
               <input className="min-h-11 w-full min-w-0 rounded-md border border-line px-3" value={settings.plexServerIdentifier} onChange={(event) => setSettings({ ...settings, plexServerIdentifier: event.target.value })} />
             </label>
           </div>
-          <div className="rounded-md border border-line bg-mist p-3">
+          <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-line bg-mist p-3">
             <h2 className="text-base font-bold">Stream proxy</h2>
             <p className="mt-1 text-sm text-ink/60">FFmpeg HLS input and recovery settings apply to new playback sessions.</p>
-            <div className="mt-3 grid min-w-0 gap-3">
+            <div className="mt-3 grid min-w-0 max-w-full grid-cols-1 gap-3 lg:grid-cols-2">
               <label className="grid min-w-0 gap-1 text-sm font-medium">
                 HLS input mode
-                <select
-                  className="min-h-11 w-full min-w-0 rounded-md border border-line bg-panel px-3"
-                  value={settings.ffmpegHlsInputMode}
-                  onChange={(event) => setSettings({ ...settings, ffmpegHlsInputMode: event.target.value as Settings["ffmpegHlsInputMode"] })}
-                >
-                  <option value="direct">Direct FFmpeg input</option>
-                  <option value="pipe">Node pipe fallback</option>
-                </select>
+                <span className="relative block min-w-0">
+                  <select
+                    className="min-h-11 w-full min-w-0 appearance-none rounded-md border border-line bg-panel py-2 pl-3 pr-11"
+                    value={settings.ffmpegHlsInputMode}
+                    onChange={(event) => setSettings({ ...settings, ffmpegHlsInputMode: event.target.value as Settings["ffmpegHlsInputMode"] })}
+                  >
+                    <option value="direct">Direct FFmpeg input</option>
+                    <option value="pipe">Node pipe fallback</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink/70" size={18} />
+                </span>
               </label>
               <label className="grid min-w-0 gap-1 text-sm font-medium">
                 Stale restart seconds
