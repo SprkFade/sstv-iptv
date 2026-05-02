@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDb, setSetting, setting } from "../db/database.js";
 import { getRefreshProgress, startRefreshGuide } from "../ingest/refresh.js";
 import { plexAdminStatus } from "../services/plex.js";
-import { applyDefaultGroupSort, listChannelGroups, recalculateChannelNumbers } from "../services/channelGroups.js";
+import { applyDefaultGroupSort, listChannelGroups, listGroupPrefixes, recalculateChannelNumbers, saveDefaultGroupPrefixOrder } from "../services/channelGroups.js";
 import { getActiveStreamMonitor } from "./stream.js";
 
 export const adminRouter = Router();
@@ -48,6 +48,10 @@ const groupUpdateSchema = z.object({
 
 const groupOrderSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1)
+});
+
+const groupPrefixOrderSchema = z.object({
+  prefixes: z.array(z.string().trim().min(1).max(24)).min(1)
 });
 
 adminRouter.put("/settings", (req, res) => {
@@ -126,10 +130,21 @@ adminRouter.post("/groups/recalculate", (_req, res) => {
   res.json({ groups: listChannelGroups(db) });
 });
 
+adminRouter.get("/groups/default-sort", (_req, res) => {
+  res.json(listGroupPrefixes(getDb()));
+});
+
 adminRouter.post("/groups/default-sort", (_req, res) => {
   const db = getDb();
   db.transaction(() => applyDefaultGroupSort(db))();
   res.json({ groups: listChannelGroups(db) });
+});
+
+adminRouter.put("/groups/default-sort", (req, res) => {
+  const body = groupPrefixOrderSchema.parse(req.body);
+  const db = getDb();
+  db.transaction(() => saveDefaultGroupPrefixOrder(db, body.prefixes))();
+  res.json({ groups: listChannelGroups(db), ...listGroupPrefixes(db) });
 });
 
 adminRouter.put("/groups/:id", (req, res) => {

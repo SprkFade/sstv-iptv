@@ -20,6 +20,9 @@ export function GroupsPage() {
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [dragId, setDragId] = useState<number | null>(null);
+  const [prefixDragId, setPrefixDragId] = useState("");
+  const [prefixOrder, setPrefixOrder] = useState<string[]>([]);
+  const [sortModalOpen, setSortModalOpen] = useState(false);
   const [pendingGroupIds, setPendingGroupIds] = useState<Set<number>>(new Set());
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -59,9 +62,16 @@ export function GroupsPage() {
     setSavedGroups(merge);
   };
 
+  const patchSavedGroup = (groupId: number, nextGroups: ChannelGroup[]) => {
+    const updated = nextGroups.find((group) => group.id === groupId);
+    if (!updated) return;
+    const merge = (current: ChannelGroup[]) => current.map((group) => group.id === groupId ? updated : group);
+    setGroups(merge);
+    setSavedGroups(merge);
+  };
+
   const updateGroup = async (group: ChannelGroup, body: { enabled?: boolean; useChannelNameForEpg?: boolean }) => {
     setError("");
-    setMessage("");
     setPendingGroupIds((current) => new Set(current).add(group.id));
     const previousGroups = groups;
     const previousSavedGroups = savedGroups;
@@ -72,8 +82,8 @@ export function GroupsPage() {
     } : item));
     try {
       const response = await api.updateGroup(group.id, body);
-      mergeGroupUpdates(response.groups);
-      setMessage("Group settings saved.");
+      if (typeof body.enabled === "boolean") mergeGroupUpdates(response.groups);
+      else patchSavedGroup(group.id, response.groups);
     } catch (err) {
       setGroups(previousGroups);
       setSavedGroups(previousSavedGroups);
@@ -131,17 +141,44 @@ export function GroupsPage() {
     }
   };
 
-  const defaultSort = async () => {
+  const openSortModal = async () => {
+    setError("");
+    setMessage("");
+    try {
+      const response = await api.defaultGroupSortConfig();
+      setPrefixOrder(response.order.length > 0 ? response.order : response.prefixes);
+      setSortModalOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load default group sort");
+    }
+  };
+
+  const moveDraggedPrefix = (targetPrefix: string) => {
+    if (!prefixDragId || prefixDragId === targetPrefix) return;
+    setPrefixOrder((current) => {
+      const from = current.indexOf(prefixDragId);
+      const to = current.indexOf(targetPrefix);
+      if (from < 0 || to < 0) return current;
+      const next = [...current];
+      const [dragged] = next.splice(from, 1);
+      next.splice(to, 0, dragged);
+      return next;
+    });
+  };
+
+  const saveDefaultSort = async () => {
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      const response = await api.defaultSortGroups();
+      const response = await api.saveDefaultGroupSort(prefixOrder);
       applyGroups(response.groups);
       setEditMode(false);
-      setMessage("Default group order applied and channel numbers recalculated.");
+      setSortModalOpen(false);
+      setPrefixOrder(response.order);
+      setMessage("Default group prefix order saved and channel numbers recalculated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to apply default group order");
+      setError(err instanceof Error ? err.message : "Unable to save default group order");
     } finally {
       setSaving(false);
     }
@@ -202,8 +239,8 @@ export function GroupsPage() {
                 <button
                   className="flex min-h-10 items-center gap-2 rounded-md border border-line bg-panel px-3 text-sm font-semibold hover:bg-ink/5 disabled:opacity-60"
                   disabled={saving}
-                  onClick={defaultSort}
-                  title="Sort country-prefixed groups first: US, CA, UK, AU, NZ, then the rest"
+                  onClick={openSortModal}
+                  title="Configure default country-prefix group sort"
                 >
                   <ArrowDownAZ size={16} /> Default sort
                 </button>
@@ -284,6 +321,63 @@ export function GroupsPage() {
             </article>
           )})}
         </section>
+      )}
+      {sortModalOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <section className="w-full max-w-md rounded-md border border-line bg-panel p-4 shadow-soft">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold">Default group sort</h2>
+                <p className="mt-1 text-sm text-ink/60">Drag prefixes into the order groups should use when applying the default sort.</p>
+              </div>
+              <button
+                className="grid size-9 shrink-0 place-items-center rounded-md border border-line hover:bg-ink/5"
+                onClick={() => setSortModalOpen(false)}
+                title="Close"
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <div className="mt-4 grid gap-2">
+              {prefixOrder.length === 0 ? (
+                <div className="rounded-md border border-line bg-mist p-4 text-sm text-ink/60">
+                  No group prefixes were found. Prefixes are detected from group names like US | News.
+                </div>
+              ) : prefixOrder.map((prefix, index) => (
+                <div
+                  key={prefix}
+                  draggable
+                  onDragStart={() => setPrefixDragId(prefix)}
+                  onDragEnd={() => setPrefixDragId("")}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    moveDraggedPrefix(prefix);
+                  }}
+                  className={`flex min-h-11 cursor-grab items-center gap-3 rounded-md border border-line bg-mist px-3 active:cursor-grabbing ${prefixDragId === prefix ? "opacity-60" : ""}`}
+                >
+                  <GripVertical size={16} className="text-ink/45" />
+                  <span className="grid size-6 place-items-center rounded-md border border-line text-xs font-bold text-ink/60">{index + 1}</span>
+                  <span className="font-semibold">{prefix}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                className="min-h-10 rounded-md border border-line bg-panel px-3 text-sm font-semibold hover:bg-ink/5"
+                onClick={() => setSortModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex min-h-10 items-center gap-2 rounded-md bg-accent px-3 text-sm font-semibold text-white disabled:opacity-60"
+                disabled={saving || prefixOrder.length === 0}
+                onClick={saveDefaultSort}
+              >
+                <Save size={16} /> Save sort
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );

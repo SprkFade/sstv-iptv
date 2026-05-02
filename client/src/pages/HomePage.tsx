@@ -288,14 +288,15 @@ export function HomePage() {
   };
 
   const changeGroup = (group: string) => {
-    if (group === activeGroup) return;
+    const nextGroup = group === activeGroup ? "" : group;
+    if (nextGroup === activeGroup) return;
     invalidateGuideRequests();
     restoredScrollRef.current = true;
     selectedChannelIdRef.current = undefined;
     setHasMore(false);
-    setActiveGroup(group);
+    setActiveGroup(nextGroup);
     channelListRef.current?.scrollTo({ left: initialNowOffset, top: 0 });
-    saveGuideState({ activeGroup: group, scrollY: 0, guideScrollLeft: GUIDE_LOOKBACK_HOURS * 60 * MINUTE_WIDTH, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
+    saveGuideState({ activeGroup: nextGroup, scrollY: 0, guideScrollLeft: GUIDE_LOOKBACK_HOURS * 60 * MINUTE_WIDTH, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
   const toggleFavoritesOnly = () => {

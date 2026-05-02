@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 
 export const UNGROUPED_NAME = "Ungrouped";
 const DEFAULT_PREFIX_ORDER = ["US", "CA", "UK", "AU", "NZ"];
+const PREFIX_ORDER_SETTING_KEY = "channel_group_prefix_order";
 
 export function groupNameSql(alias = "channels") {
   return `COALESCE(NULLIF(${alias}.group_title, ''), '${UNGROUPED_NAME}')`;
@@ -16,15 +17,44 @@ function groupPrefix(name: string) {
   return match?.[1]?.toUpperCase() ?? "";
 }
 
-function defaultSortRank(name: string) {
+function defaultSortRank(name: string, prefixOrder: string[]) {
   const prefix = groupPrefix(name);
   if (!prefix) return { bucket: 2, prefix: "", prefixRank: Number.MAX_SAFE_INTEGER };
-  const knownIndex = DEFAULT_PREFIX_ORDER.indexOf(prefix);
+  const knownIndex = prefixOrder.indexOf(prefix);
   return {
     bucket: knownIndex >= 0 ? 0 : 1,
     prefix,
     prefixRank: knownIndex >= 0 ? knownIndex : Number.MAX_SAFE_INTEGER
   };
+}
+
+function readPrefixOrder(database: Database.Database) {
+  const row = database
+    .prepare("SELECT value FROM app_settings WHERE key = ?")
+    .get(PREFIX_ORDER_SETTING_KEY) as { value: string } | undefined;
+  if (!row?.value) return DEFAULT_PREFIX_ORDER;
+  try {
+    const parsed = JSON.parse(row.value) as unknown;
+    if (!Array.isArray(parsed)) return DEFAULT_PREFIX_ORDER;
+    const clean = parsed
+      .map((item) => String(item).trim().toUpperCase())
+      .filter(Boolean);
+    return clean.length > 0 ? Array.from(new Set(clean)) : DEFAULT_PREFIX_ORDER;
+  } catch {
+    return DEFAULT_PREFIX_ORDER;
+  }
+}
+
+function writePrefixOrder(database: Database.Database, prefixes: string[]) {
+  const clean = Array.from(new Set(prefixes.map((prefix) => prefix.trim().toUpperCase()).filter(Boolean)));
+  database
+    .prepare(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES (?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`
+    )
+    .run(PREFIX_ORDER_SETTING_KEY, JSON.stringify(clean));
+  return clean;
 }
 
 export function ensureChannelGroups(database: Database.Database, defaultEnabled = false) {
@@ -105,15 +135,28 @@ export function recalculateChannelNumbers(database: Database.Database) {
   }
 }
 
-export function applyDefaultGroupSort(database: Database.Database) {
+export function listGroupPrefixes(database: Database.Database) {
+  ensureChannelGroups(database, false);
+  const groups = database.prepare("SELECT name FROM channel_groups").all() as Array<{ name: string }>;
+  const detected = Array.from(new Set(groups.map((group) => groupPrefix(group.name)).filter(Boolean))).sort(compareNatural);
+  const configured = readPrefixOrder(database);
+  const configuredSet = new Set(configured);
+  const order = [
+    ...configured.filter((prefix) => detected.includes(prefix)),
+    ...detected.filter((prefix) => !configuredSet.has(prefix))
+  ];
+  return { prefixes: detected, order };
+}
+
+export function applyDefaultGroupSort(database: Database.Database, prefixOrder = readPrefixOrder(database)) {
   ensureChannelGroups(database, false);
   const groups = database
     .prepare("SELECT id, name FROM channel_groups")
     .all() as Array<{ id: number; name: string }>;
 
   groups.sort((left, right) => {
-    const leftRank = defaultSortRank(left.name);
-    const rightRank = defaultSortRank(right.name);
+    const leftRank = defaultSortRank(left.name, prefixOrder);
+    const rightRank = defaultSortRank(right.name, prefixOrder);
     if (leftRank.bucket !== rightRank.bucket) return leftRank.bucket - rightRank.bucket;
     if (leftRank.prefixRank !== rightRank.prefixRank) return leftRank.prefixRank - rightRank.prefixRank;
     const byPrefix = compareNatural(leftRank.prefix, rightRank.prefix);
@@ -124,6 +167,11 @@ export function applyDefaultGroupSort(database: Database.Database) {
   const update = database.prepare("UPDATE channel_groups SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
   groups.forEach((group, index) => update.run(index, group.id));
   recalculateChannelNumbers(database);
+}
+
+export function saveDefaultGroupPrefixOrder(database: Database.Database, prefixes: string[]) {
+  const order = writePrefixOrder(database, prefixes);
+  applyDefaultGroupSort(database, order);
 }
 
 export function listChannelGroups(database: Database.Database) {
