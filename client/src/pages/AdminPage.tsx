@@ -164,7 +164,7 @@ export function AdminPage() {
           <div className="rounded-md border border-line bg-mist p-3">
             <h2 className="text-base font-bold">Stream proxy</h2>
             <p className="mt-1 text-sm text-ink/60">FFmpeg HLS input and recovery settings apply to new playback sessions.</p>
-            <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="mt-3 grid min-w-0 gap-3">
               <label className="grid min-w-0 gap-1 text-sm font-medium">
                 HLS input mode
                 <select
