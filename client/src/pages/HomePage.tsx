@@ -386,6 +386,15 @@ export function HomePage() {
     return { left, width };
   };
 
+  const scrollGuideToNow = () => {
+    const scroller = guideScrollRef.current;
+    if (!scroller) return;
+    const targetLeft = Math.max(0, currentOffset - guideDefaultLookbackMinutes * MINUTE_WIDTH);
+    scroller.scrollTo({ left: targetLeft, top: scroller.scrollTop, behavior: "smooth" });
+    setGuideScrollLeft(targetLeft);
+    saveGuideState({ guideScrollLeft: targetLeft });
+  };
+
   return (
     <div className="guide-screen flex min-h-0 flex-col gap-4">
       <section className="min-w-0 shrink-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
@@ -496,8 +505,16 @@ export function HomePage() {
               className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-accent shadow-[0_0_12px_rgba(77,166,255,0.7)]"
               style={{ left: channelColumnWidth + currentOffset }}
             />
-            <div className="sticky left-0 top-0 z-[60] flex h-14 items-center border-b border-r border-line bg-panel px-4">
+            <div className="sticky left-0 top-0 z-[60] flex h-14 items-center justify-between gap-3 border-b border-r border-line bg-panel px-4">
               <div className="text-sm font-bold">Channels</div>
+              <button
+                type="button"
+                className="min-h-8 shrink-0 rounded-md border border-line bg-mist px-2.5 text-xs font-bold text-ink/75 transition hover:border-accent hover:bg-accent/15 hover:text-ink"
+                onClick={scrollGuideToNow}
+                title="Jump to now"
+              >
+                Now
+              </button>
             </div>
             <div className="sticky top-0 z-50 h-14 border-b border-line bg-panel">
               <div className="relative h-full" style={{ width: TIMELINE_WIDTH }}>
