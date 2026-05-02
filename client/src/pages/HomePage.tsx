@@ -487,7 +487,7 @@ export function HomePage() {
                       <Link
                         to={`/channel/${item.channel_id}`}
                         onClick={() => rememberBeforeNavigate(item.channel_id)}
-                        className="absolute inset-x-2 top-2 flex h-20 items-center rounded-md border border-line/70 bg-panel/75 px-4 text-sm font-semibold text-ink/55"
+                        className="absolute inset-0 flex items-center bg-panel/45 px-4 text-sm font-semibold text-ink/55 transition hover:bg-accent/10"
                       >
                         No guide data
                       </Link>
@@ -499,8 +499,8 @@ export function HomePage() {
                           key={program.id}
                           to={`/channel/${item.channel_id}`}
                           onClick={() => rememberBeforeNavigate(item.channel_id)}
-                          className={`absolute top-2 h-20 overflow-hidden rounded-md border px-3 py-2 transition hover:border-accent hover:bg-accent/15 ${active ? "border-accent bg-accent/20" : "border-line bg-panel/80"}`}
-                          style={{ left: layout.left + 6, width: Math.max(0, layout.width - 8) }}
+                          className={`absolute inset-y-0 flex min-w-0 flex-col justify-center overflow-hidden border-r border-line/45 px-3 transition hover:bg-accent/15 ${active ? "bg-accent/20" : "bg-panel/70"}`}
+                          style={{ left: layout.left, width: Math.max(0, layout.width) }}
                           title={`${program.title} ${formatGuideTime(new Date(program.start_time))} - ${formatGuideTime(new Date(program.end_time))}`}
                         >
                           <div className="truncate text-sm font-bold">{program.title}</div>
