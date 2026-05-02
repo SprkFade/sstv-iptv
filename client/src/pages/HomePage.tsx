@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Filter, Search, Star, X } from "lucide-react";
 import { api, type Airing, type Program } from "../api/client";
@@ -133,8 +133,6 @@ export function HomePage() {
   const guideDefaultLookbackMinutes = compactGuide ? COMPACT_GUIDE_DEFAULT_LOOKBACK_MINUTES : GUIDE_DEFAULT_LOOKBACK_MINUTES;
   const defaultGuideScrollLeft = Math.max(0, initialNowOffset - guideDefaultLookbackMinutes * MINUTE_WIDTH);
   const desktopDefaultGuideScrollLeft = Math.max(0, initialNowOffset - GUIDE_DEFAULT_LOOKBACK_MINUTES * MINUTE_WIDTH);
-  const [guideScrollLeft, setGuideScrollLeft] = useState(() => restoredState.current.guideScrollLeft ?? defaultGuideScrollLeft);
-  const [guideViewportWidth, setGuideViewportWidth] = useState(0);
 
   useEffect(() => {
     document.body.classList.add("guide-page-locked");
@@ -237,8 +235,7 @@ export function HomePage() {
           restoredLeft = savedAtNowEdge || savedAtOldDefault ? defaultGuideScrollLeft : savedLeft;
         }
         guideScrollRef.current?.scrollTo({ left: restoredLeft });
-        setGuideScrollLeft(restoredLeft);
-        setGuideViewportWidth(guideScrollRef.current?.clientWidth ?? 0);
+        guideScrollRef.current?.style.setProperty("--guide-scroll-left", `${restoredLeft}px`);
         const selectedChannelId = selectedChannelIdRef.current;
         const selectedRow = selectedChannelId
           ? document.getElementById(`guide-channel-${selectedChannelId}`)
@@ -266,8 +263,8 @@ export function HomePage() {
     const guideScroll = guideScrollRef.current;
     const channelList = channelListRef.current;
     const updateGuideScrollMetrics = () => {
-      setGuideScrollLeft(guideScroll?.scrollLeft ?? 0);
-      setGuideViewportWidth(guideScroll?.clientWidth ?? 0);
+      if (!guideScroll) return;
+      guideScroll.style.setProperty("--guide-scroll-left", `${guideScroll.scrollLeft}px`);
     };
     if (guideScroll && guideScroll !== channelList) guideScroll.addEventListener("scroll", remember, { passive: true });
     channelList?.addEventListener("scroll", remember, { passive: true });
@@ -335,7 +332,7 @@ export function HomePage() {
     setHasMore(false);
     setActiveGroup(nextGroup);
     channelListRef.current?.scrollTo({ left: defaultGuideScrollLeft, top: 0 });
-    setGuideScrollLeft(defaultGuideScrollLeft);
+    channelListRef.current?.style.setProperty("--guide-scroll-left", `${defaultGuideScrollLeft}px`);
     saveGuideState({ activeGroup: nextGroup, scrollY: 0, guideScrollLeft: defaultGuideScrollLeft, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
@@ -347,7 +344,7 @@ export function HomePage() {
     setHasMore(false);
     setFavoritesOnly(next);
     channelListRef.current?.scrollTo({ left: defaultGuideScrollLeft, top: 0 });
-    setGuideScrollLeft(defaultGuideScrollLeft);
+    channelListRef.current?.style.setProperty("--guide-scroll-left", `${defaultGuideScrollLeft}px`);
     saveGuideState({ favoritesOnly: next, scrollY: 0, guideScrollLeft: defaultGuideScrollLeft, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
@@ -370,28 +367,13 @@ export function HomePage() {
   const currentOffset = Math.max(0, Math.min(TIMELINE_WIDTH, minutesBetween(guideStartRef.current, now) * MINUTE_WIDTH));
   const channelColumnWidth = compactGuide ? COMPACT_CHANNEL_COLUMN_WIDTH : CHANNEL_COLUMN_WIDTH;
   const guideTemplateColumns = `${channelColumnWidth}px ${TIMELINE_WIDTH}px`;
-  const timelineViewportWidth = Math.max(0, guideViewportWidth - channelColumnWidth);
-
-  const programLabelStyle = (layout: { left: number; width: number }, active: boolean) => {
-    const visibleLeft = guideScrollLeft;
-    const visibleRight = guideScrollLeft + Math.max(120, timelineViewportWidth);
-    const nowVisible = currentOffset >= visibleLeft && currentOffset <= visibleRight;
-    const anchor = active && nowVisible ? currentOffset + 12 : visibleLeft + 12;
-    const blockStart = layout.left;
-    const blockEnd = layout.left + layout.width;
-    const absoluteLeft = Math.min(Math.max(anchor, blockStart + 8), Math.max(blockStart + 8, blockEnd - 32));
-    const left = Math.max(8, absoluteLeft - blockStart);
-    const preferredRight = Math.min(blockEnd, visibleRight) - blockStart;
-    const width = Math.max(28, Math.min(layout.width - left - 8, preferredRight - left - 8));
-    return { left, width };
-  };
 
   const scrollGuideToNow = () => {
     const scroller = guideScrollRef.current;
     if (!scroller) return;
     const targetLeft = Math.max(0, currentOffset - guideDefaultLookbackMinutes * MINUTE_WIDTH);
     scroller.scrollTo({ left: targetLeft, top: scroller.scrollTop, behavior: "smooth" });
-    setGuideScrollLeft(targetLeft);
+    scroller.style.setProperty("--guide-scroll-left", `${targetLeft}px`);
     saveGuideState({ guideScrollLeft: targetLeft });
   };
 
@@ -499,6 +481,7 @@ export function HomePage() {
               guideScrollRef.current = node;
             }}
             className="guide-channel-list scrollbar-none h-full overflow-auto overscroll-contain"
+            style={{ "--guide-scroll-left": `${restoredState.current.guideScrollLeft ?? defaultGuideScrollLeft}px` } as CSSProperties}
           >
           <div className="relative grid" style={{ width: channelColumnWidth + TIMELINE_WIDTH, gridTemplateColumns: guideTemplateColumns }}>
             <div
@@ -567,17 +550,19 @@ export function HomePage() {
                     ) : programs.map((program) => {
                       const layout = programLayout(program, guideStartRef.current, guideEndRef.current);
                       const active = nowProgram?.id === program.id;
-                      const labelStyle = programLabelStyle(layout, active);
                       return (
                         <Link
                           key={program.id}
                           to={`/channel/${item.channel_id}`}
                           onClick={() => rememberBeforeNavigate(item.channel_id)}
                           className={`absolute inset-y-0 min-w-0 overflow-hidden border-r border-line/45 transition hover:bg-accent/15 ${active ? "bg-accent/20" : "bg-panel/70"}`}
-                          style={{ left: layout.left, width: Math.max(0, layout.width) }}
+                          style={{ left: layout.left, width: Math.max(0, layout.width), "--program-left": `${layout.left}px`, "--program-width": `${layout.width}px` } as CSSProperties}
                           title={`${program.title} ${formatGuideTime(new Date(program.start_time))} - ${formatGuideTime(new Date(program.end_time))}`}
                         >
-                          <div className="absolute top-1/2 min-w-0 -translate-y-1/2 px-1" style={labelStyle}>
+                          <div
+                            className={`guide-program-label absolute top-1/2 min-w-0 -translate-y-1/2 px-1 ${active ? "guide-program-label-active" : ""}`}
+                            style={{ "--program-now-anchor": `${currentOffset + 12}px` } as CSSProperties}
+                          >
                             <div className="truncate text-sm font-bold">{program.title}</div>
                             <div className="mt-1 truncate text-xs text-ink/60">
                               {formatGuideTime(new Date(program.start_time))} - {formatGuideTime(new Date(program.end_time))}
