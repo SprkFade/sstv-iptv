@@ -54,6 +54,12 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     let networkRecoveries = 0;
     let prepareAbort: AbortController | null = null;
     let stallTimer: number | undefined;
+    let watchdogTimer: number | undefined;
+    let lastProgressAt = Date.now();
+    let lastRecoveryAt = 0;
+    let lastVideoTime = 0;
+    let softRecoveries = 0;
+    let hardRecoveries = 0;
 
     const trace = (message: string) => {
       onTrace?.(`${new Date().toLocaleTimeString()} ${message}`);
@@ -119,8 +125,18 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       if (stallTimer) window.clearTimeout(stallTimer);
       stallTimer = undefined;
     };
+    const hardResetPlayer = (reason: string) => {
+      if (disposed || hardRecoveries >= 2) return;
+      hardRecoveries += 1;
+      trace(`hard player reset ${hardRecoveries}/2: ${reason} (${playerState()})`);
+      setRetryKey((value) => value + 1);
+    };
     const recoverFromStall = () => {
       if (disposed || video.paused || video.ended) return;
+      const now = Date.now();
+      if (now - lastRecoveryAt < 5000) return;
+      lastRecoveryAt = now;
+      softRecoveries += 1;
       trace(`stall recovery started (${playerState()})`);
       if (hls?.liveSyncPosition && Number.isFinite(hls.liveSyncPosition)) {
         const drift = Math.abs(video.currentTime - hls.liveSyncPosition);
@@ -139,6 +155,9 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       hls?.startLoad(-1);
       hls?.recoverMediaError();
       requestPlayback();
+      if (softRecoveries >= 3 && now - lastProgressAt > 15_000) {
+        hardResetPlayer("playback clock did not resume after hls.js recovery");
+      }
     };
     const scheduleStallRecovery = () => {
       trace(`video stalled/waiting; recovery scheduled (${playerState()})`);
@@ -153,7 +172,14 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       trace(`video playing (${playerState()})`);
       setPlaybackBlocked(false);
     };
-    const onProgressing = () => clearStallTimer();
+    const onProgressing = () => {
+      if (Math.abs(video.currentTime - lastVideoTime) > 0.1) {
+        lastProgressAt = Date.now();
+        lastVideoTime = video.currentTime;
+        softRecoveries = 0;
+      }
+      clearStallTimer();
+    };
     const onCanPlay = () => trace(`video canplay (${playerState()})`);
     video.addEventListener("error", onVideoError);
     video.addEventListener("playing", onPlaying);
@@ -183,12 +209,17 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
         hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
-          liveSyncDurationCount: 4,
-          liveMaxLatencyDurationCount: 12,
+          liveSyncDurationCount: 6,
+          liveMaxLatencyDurationCount: 18,
           maxLiveSyncPlaybackRate: 1.25,
           liveDurationInfinity: true,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
           backBufferLength: 60,
           liveBackBufferLength: 60,
+          highBufferWatchdogPeriod: 2,
+          nudgeOffset: 0.2,
+          nudgeMaxRetry: 12,
           manifestLoadingMaxRetry: 10,
           levelLoadingMaxRetry: 10,
           fragLoadingMaxRetry: 10,
@@ -207,6 +238,15 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
         });
         hls.on(Hls.Events.ERROR, (_event, data) => {
           trace(`hls.js ${data.fatal ? "fatal " : ""}${data.type}:${data.details} (${playerState()})`);
+          const details = String(data.details ?? "");
+          if (!data.fatal && /buffer|stalled|nudge/i.test(details)) {
+            scheduleStallRecovery();
+            return;
+          }
+          if (!data.fatal && /fragLoad|levelLoad|manifestLoad/i.test(details)) {
+            hls?.startLoad(-1);
+            return;
+          }
           if (!data.fatal) return;
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveries < 12) {
             networkRecoveries += 1;
@@ -237,6 +277,14 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
           requestPlayback();
         });
         hls.attachMedia(video);
+        watchdogTimer = window.setInterval(() => {
+          if (disposed || video.paused || video.ended || !hls) return;
+          const stalledMs = Date.now() - lastProgressAt;
+          if (stalledMs > 10_000) {
+            trace(`watchdog detected ${Math.round(stalledMs / 1000)}s without playback progress (${playerState()})`);
+            recoverFromStall();
+          }
+        }, 4000);
       } catch (err) {
         if (!disposed) {
           setLoadingMessage("");
@@ -250,6 +298,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       prepareAbort?.abort();
       hls?.destroy();
       clearStallTimer();
+      if (watchdogTimer) window.clearInterval(watchdogTimer);
       video.removeEventListener("canplay", requestPlayback);
       video.removeEventListener("error", onVideoError);
       video.removeEventListener("playing", onPlaying);
