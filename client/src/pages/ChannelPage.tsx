@@ -8,6 +8,7 @@ import { VideoPlayer } from "../components/VideoPlayer";
 import { formatTime } from "../utils/time";
 
 const UPCOMING_WINDOW_HOURS = 12;
+const UPCOMING_LIMIT = 5;
 
 function guideWindowParams() {
   const start = new Date();
@@ -46,6 +47,7 @@ export function ChannelPage() {
 
   const current = programs.find((program) => new Date(program.start_time) <= new Date() && new Date(program.end_time) > new Date());
   const hasGuideData = programs.length > 0;
+  const upcomingPrograms = programs.slice(0, UPCOMING_LIMIT);
 
   return (
     <div className="grid gap-4">
@@ -82,7 +84,7 @@ export function ChannelPage() {
         <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
           <h2 className="text-xl font-bold">Upcoming</h2>
           <div className="mt-3 grid gap-2">
-            {programs.map((program) => (
+            {upcomingPrograms.map((program) => (
               <article key={program.id} className="rounded-md border border-line p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
