@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Filter, Search, Star, X } from "lucide-react";
-import { api, type Airing } from "../api/client";
+import { api, type Airing, type Program } from "../api/client";
 import { ChannelLogo } from "../components/ChannelLogo";
 import { FavoriteButton } from "../components/FavoriteButton";
-import { ProgramBar } from "../components/ProgramBar";
 
 const PAGE_SIZE = 25;
 const GUIDE_STATE_KEY = "sstv-guide-state";
+const GUIDE_HOURS = 12;
+const MINUTE_WIDTH = 5;
+const CHANNEL_COLUMN_WIDTH = 188;
+const TIMELINE_WIDTH = GUIDE_HOURS * 60 * MINUTE_WIDTH;
 
 type GuideState = {
   activeGroup: string;
@@ -50,8 +53,48 @@ function mergeUniqueChannels(current: Airing[], incoming: Airing[]) {
   ];
 }
 
+function formatGuideTime(date: Date) {
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function minutesBetween(start: Date, end: Date) {
+  return (end.getTime() - start.getTime()) / 60000;
+}
+
+function buildTimeMarkers(start: Date) {
+  const end = new Date(start.getTime() + GUIDE_HOURS * 60 * 60 * 1000);
+  const first = new Date(start);
+  const minute = first.getMinutes();
+  const nextHalfHour = minute === 0 || minute === 30 ? minute : minute < 30 ? 30 : 60;
+  first.setMinutes(nextHalfHour, 0, 0);
+  const markers: Array<{ label: string; left: number }> = [];
+  for (let marker = first; marker <= end; marker = new Date(marker.getTime() + 30 * 60 * 1000)) {
+    markers.push({ label: formatGuideTime(marker), left: Math.max(0, minutesBetween(start, marker) * MINUTE_WIDTH) });
+  }
+  return markers;
+}
+
+function programLayout(program: Program, windowStart: Date, windowEnd: Date) {
+  const start = new Date(program.start_time);
+  const end = new Date(program.end_time);
+  const clippedStart = new Date(Math.max(start.getTime(), windowStart.getTime()));
+  const clippedEnd = new Date(Math.min(end.getTime(), windowEnd.getTime()));
+  const left = Math.max(0, minutesBetween(windowStart, clippedStart) * MINUTE_WIDTH);
+  const width = Math.max(10, minutesBetween(clippedStart, clippedEnd) * MINUTE_WIDTH);
+  return { left, width };
+}
+
+function currentProgram(item: Airing) {
+  const now = Date.now();
+  return item.programs?.find((program) => (
+    new Date(program.start_time).getTime() <= now && new Date(program.end_time).getTime() > now
+  ));
+}
+
 export function HomePage() {
   const restoredState = useRef(readGuideState());
+  const guideStartRef = useRef(new Date());
+  const guideEndRef = useRef(new Date(guideStartRef.current.getTime() + GUIDE_HOURS * 60 * 60 * 1000));
   const [airing, setAiring] = useState<Airing[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
   const [activeGroup, setActiveGroup] = useState(() => restoredState.current.activeGroup ?? "");
@@ -64,6 +107,7 @@ export function HomePage() {
   const [hasLoadedGuide, setHasLoadedGuide] = useState(false);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [now, setNow] = useState(() => new Date());
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const guideScrollRef = useRef<HTMLDivElement | null>(null);
   const filterScrollRef = useRef<HTMLDivElement | null>(null);
@@ -77,6 +121,11 @@ export function HomePage() {
   useEffect(() => {
     document.body.classList.add("guide-page-locked");
     return () => document.body.classList.remove("guide-page-locked");
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const saveGuideState = useCallback((overrides: Partial<GuideState> = {}) => {
@@ -99,6 +148,8 @@ export function HomePage() {
 
   const guideParams = useCallback((offset: number, limit = PAGE_SIZE) => {
     const searchParams = new URLSearchParams({
+      at: guideStartRef.current.toISOString(),
+      end: guideEndRef.current.toISOString(),
       limit: String(limit),
       offset: String(offset)
     });
@@ -177,11 +228,11 @@ export function HomePage() {
     };
     const guideScroll = guideScrollRef.current;
     const channelList = channelListRef.current;
-    guideScroll?.addEventListener("scroll", remember, { passive: true });
+    if (guideScroll && guideScroll !== channelList) guideScroll.addEventListener("scroll", remember, { passive: true });
     channelList?.addEventListener("scroll", remember, { passive: true });
     return () => {
       window.cancelAnimationFrame(frame);
-      guideScroll?.removeEventListener("scroll", remember);
+      if (guideScroll && guideScroll !== channelList) guideScroll.removeEventListener("scroll", remember);
       channelList?.removeEventListener("scroll", remember);
       saveGuideState();
     };
@@ -266,6 +317,9 @@ export function HomePage() {
 
   const searchActive = query.trim().length > 0;
   const searchResultCount = (search?.channels.length ?? 0) + (search?.programs.length ?? 0);
+  const timeMarkers = buildTimeMarkers(guideStartRef.current);
+  const currentOffset = Math.max(0, Math.min(TIMELINE_WIDTH, minutesBetween(guideStartRef.current, now) * MINUTE_WIDTH));
+  const guideTemplateColumns = `${CHANNEL_COLUMN_WIDTH}px ${TIMELINE_WIDTH}px`;
 
   return (
     <div className="guide-screen flex min-h-0 flex-col gap-4">
@@ -365,37 +419,97 @@ export function HomePage() {
             </div>
           </div>
         ) : (
-          <div ref={channelListRef} className="guide-channel-list scrollbar-none h-full overflow-y-auto overscroll-contain">
-        <div ref={guideScrollRef} className="overflow-x-auto">
-          <div className="grid min-w-[760px] gap-0">
+          <div
+            ref={(node) => {
+              channelListRef.current = node;
+              guideScrollRef.current = node;
+            }}
+            className="guide-channel-list scrollbar-none h-full overflow-auto overscroll-contain"
+          >
+          <div className="relative grid" style={{ width: CHANNEL_COLUMN_WIDTH + TIMELINE_WIDTH, gridTemplateColumns: guideTemplateColumns }}>
+            <div className="sticky left-0 top-0 z-30 flex h-14 items-center border-b border-r border-line bg-panel px-4">
+              <div>
+                <div className="text-sm font-bold">Channels</div>
+                <div className="text-xs text-ink/50">Now + 12 hours</div>
+              </div>
+            </div>
+            <div className="sticky top-0 z-20 h-14 border-b border-line bg-panel">
+              <div className="relative h-full" style={{ width: TIMELINE_WIDTH }}>
+                <div className="absolute bottom-2 text-xs font-bold text-accent" style={{ left: currentOffset }}>
+                  Now
+                </div>
+                <div className="absolute inset-y-0 w-px bg-accent/80" style={{ left: currentOffset }} />
+                {timeMarkers.map((marker) => (
+                  <div key={`${marker.label}-${marker.left}`} className="absolute inset-y-0 border-l border-line/70" style={{ left: marker.left }}>
+                    <span className="absolute left-2 top-3 whitespace-nowrap text-xs font-semibold text-ink/65">{marker.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
             {loading && airing.length === 0 && !hasLoadedGuide && (
-              <div className="p-4 text-sm text-ink/60">Loading guide...</div>
+              <div className="col-span-2 p-4 text-sm text-ink/60">Loading guide...</div>
             )}
             {!loading && airing.length === 0 && (
-              <div className="p-4 text-sm text-ink/60">No channels match this view.</div>
+              <div className="col-span-2 p-4 text-sm text-ink/60">No channels match this view.</div>
             )}
-            {airing.map((item) => (
-          <article id={`guide-channel-${item.channel_id}`} key={item.channel_id} className="border-b border-line p-3 last:border-b-0">
-            <div className="grid grid-cols-[5.5rem_auto_minmax(0,1fr)_auto] items-center gap-3">
-              <div className="text-right">
-                <div className="text-xs font-semibold uppercase text-ink/45">CH</div>
-                <div className="text-lg font-bold tabular-nums">{item.channel_number ?? item.sort_order + 1}</div>
-              </div>
-              <Link to={`/channel/${item.channel_id}`} onClick={() => rememberBeforeNavigate(item.channel_id)}><ChannelLogo src={item.logo_url} name={item.display_name} /></Link>
-              <Link to={`/channel/${item.channel_id}`} className="min-w-0" onClick={() => rememberBeforeNavigate(item.channel_id)}>
-                <div className="truncate text-sm font-semibold text-ink/60">{item.display_name}</div>
-                <h2 className="truncate text-lg font-bold">{item.title ?? "No guide data"}</h2>
-                <p className="line-clamp-2 text-sm text-ink/70">{item.description ?? item.group_title}</p>
-                <ProgramBar start={item.start_time} end={item.end_time} />
-              </Link>
-              <FavoriteButton active={Boolean(item.favorite)} onClick={() => toggleFavorite(item).catch(() => undefined)} />
-            </div>
-          </article>
-            ))}
-            <div ref={loadMoreRef} className="no-scroll-anchor h-8" />
-            {loadingMore && <div className="no-scroll-anchor p-4 text-center text-sm text-ink/60">Loading more channels...</div>}
+            {airing.map((item) => {
+              const nowProgram = currentProgram(item);
+              const programs = item.programs ?? [];
+              return (
+                <article id={`guide-channel-${item.channel_id}`} key={item.channel_id} className="contents">
+                  <div className="sticky left-0 z-10 grid min-h-24 grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-r border-line bg-panel px-3">
+                    <Link to={`/channel/${item.channel_id}`} onClick={() => rememberBeforeNavigate(item.channel_id)}>
+                      <ChannelLogo src={item.logo_url} name={item.display_name} size="sm" />
+                    </Link>
+                    <Link to={`/channel/${item.channel_id}`} className="min-w-0" onClick={() => rememberBeforeNavigate(item.channel_id)}>
+                      <div className="text-xs font-semibold uppercase text-ink/45">CH {item.channel_number ?? item.sort_order + 1}</div>
+                      <div className="truncate text-sm font-bold">{item.display_name}</div>
+                      <div className="truncate text-xs text-ink/55">{item.group_title}</div>
+                    </Link>
+                    <FavoriteButton active={Boolean(item.favorite)} onClick={() => toggleFavorite(item).catch(() => undefined)} />
+                  </div>
+                  <div className="relative min-h-24 border-b border-line bg-mist/35" style={{ width: TIMELINE_WIDTH }}>
+                    <div className="pointer-events-none absolute inset-y-0 w-px bg-accent/80" style={{ left: currentOffset }} />
+                    {timeMarkers.map((marker) => (
+                      <div key={`${item.channel_id}-${marker.left}`} className="pointer-events-none absolute inset-y-0 border-l border-line/45" style={{ left: marker.left }} />
+                    ))}
+                    {programs.length === 0 ? (
+                      <Link
+                        to={`/channel/${item.channel_id}`}
+                        onClick={() => rememberBeforeNavigate(item.channel_id)}
+                        className="absolute inset-x-2 top-2 flex h-20 items-center rounded-md border border-line/70 bg-panel/75 px-4 text-sm font-semibold text-ink/55"
+                      >
+                        No guide data
+                      </Link>
+                    ) : programs.map((program) => {
+                      const layout = programLayout(program, guideStartRef.current, guideEndRef.current);
+                      const active = nowProgram?.id === program.id;
+                      return (
+                        <Link
+                          key={program.id}
+                          to={`/channel/${item.channel_id}`}
+                          onClick={() => rememberBeforeNavigate(item.channel_id)}
+                          className={`absolute top-2 h-20 overflow-hidden rounded-md border px-3 py-2 transition hover:border-accent hover:bg-accent/15 ${active ? "border-accent bg-accent/20" : "border-line bg-panel/80"}`}
+                          style={{ left: layout.left + 6, width: Math.max(0, layout.width - 8) }}
+                          title={`${program.title} ${formatGuideTime(new Date(program.start_time))} - ${formatGuideTime(new Date(program.end_time))}`}
+                        >
+                          <div className="truncate text-sm font-bold">{program.title}</div>
+                          <div className="mt-1 truncate text-xs text-ink/60">
+                            {formatGuideTime(new Date(program.start_time))} - {formatGuideTime(new Date(program.end_time))}
+                          </div>
+                          {(program.subtitle || program.description) && (
+                            <div className="mt-1 line-clamp-1 text-xs text-ink/50">{program.subtitle || program.description}</div>
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </article>
+              );
+            })}
+            <div ref={loadMoreRef} className="no-scroll-anchor col-span-2 h-8" />
+            {loadingMore && <div className="no-scroll-anchor col-span-2 p-4 text-center text-sm text-ink/60">Loading more channels...</div>}
           </div>
-        </div>
         </div>
         )}
       </section>
