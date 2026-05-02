@@ -113,7 +113,7 @@ export function StreamsPage() {
         <div className="mt-4 grid gap-3">
           {monitor?.streams.map((stream) => (
             <article key={stream.channelId} className="overflow-hidden rounded-md border border-line bg-mist">
-              <div className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+              <div className="grid gap-3 p-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-md border border-line px-2 py-1 text-xs font-bold text-ink/70">
@@ -127,7 +127,7 @@ export function StreamsPage() {
                   <h3 className="mt-2 truncate text-lg font-bold">{stream.channelName}</h3>
                   <p className="text-sm text-ink/60">{stream.groupTitle || "No group"} · {stream.inputMode === "ffmpeg-direct" ? "Direct FFmpeg input" : "Node pipe input"}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 xl:grid-cols-6 xl:min-w-[48rem]">
+                <div className="grid min-w-0 grid-cols-2 gap-2 text-sm md:grid-cols-3 2xl:grid-cols-6">
                   <div className="rounded-md border border-line bg-panel p-3">
                     <div className="text-ink/50">Clients</div>
                     <div className="font-bold">{stream.clientCount}</div>
@@ -146,11 +146,11 @@ export function StreamsPage() {
                   </div>
                   <div className="rounded-md border border-line bg-panel p-3">
                     <div className="text-ink/50">Input quality</div>
-                    <div className="font-bold leading-snug">{stream.quality.input.label}</div>
+                    <div className="break-words text-sm font-bold leading-snug">{stream.quality.input.label}</div>
                   </div>
                   <div className="rounded-md border border-line bg-panel p-3">
                     <div className="text-ink/50">Output quality</div>
-                    <div className="font-bold leading-snug">{stream.quality.output.label}</div>
+                    <div className="break-words text-sm font-bold leading-snug">{stream.quality.output.label}</div>
                   </div>
                 </div>
               </div>
