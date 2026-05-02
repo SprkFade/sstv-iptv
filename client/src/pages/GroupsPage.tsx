@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDownAZ, Eye, EyeOff, GripVertical, Layers3, RefreshCw, Save, X } from "lucide-react";
+import { ArrowDownAZ, Eye, EyeOff, GripVertical, Layers3, RefreshCw, Save, Search, X } from "lucide-react";
 import { api, type ChannelGroup } from "../api/client";
 
 function numberRange(group: ChannelGroup) {
@@ -24,6 +24,7 @@ export function GroupsPage() {
   const [prefixOrder, setPrefixOrder] = useState<string[]>([]);
   const [sortModalOpen, setSortModalOpen] = useState(false);
   const [pendingGroupIds, setPendingGroupIds] = useState<Set<number>>(new Set());
+  const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -31,6 +32,19 @@ export function GroupsPage() {
     if (groups.length !== savedGroups.length) return true;
     return groups.some((group, index) => group.id !== savedGroups[index]?.id);
   }, [groups, savedGroups]);
+
+  const filteredGroups = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return groups;
+    return groups.filter((group) => {
+      const fields = [
+        group.name,
+        String(group.channel_count),
+        numberRange(group)
+      ];
+      return fields.some((field) => field.toLowerCase().includes(normalized));
+    });
+  }, [groups, query]);
 
   const load = async () => {
     const response = await api.groups();
@@ -255,6 +269,30 @@ export function GroupsPage() {
             )}
           </div>
         </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <label className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink/45" size={18} />
+            <input
+              className="min-h-11 w-full rounded-md border border-line bg-mist py-2 pl-10 pr-10 text-sm outline-none focus:border-accent"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search groups"
+            />
+            {query && (
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-md text-ink/55 hover:bg-ink/10"
+                onClick={() => setQuery("")}
+                title="Clear search"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </label>
+          <span className="text-sm font-medium text-ink/60">
+            {query.trim() ? `${filteredGroups.length} of ${groups.length}` : `${groups.length} groups`}
+          </span>
+        </div>
         {message && <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>}
         {error && <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
       </section>
@@ -265,9 +303,16 @@ export function GroupsPage() {
           <p className="mt-1 text-sm text-ink/60">Run a source refresh to discover channel groups.</p>
         </section>
       ) : (
+        filteredGroups.length === 0 ? (
+          <section className="rounded-md border border-line bg-panel p-6 text-center shadow-soft">
+            <h2 className="text-lg font-bold">No matching groups</h2>
+            <p className="mt-1 text-sm text-ink/60">Clear the search to show all channel groups.</p>
+          </section>
+        ) : (
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {groups.map((group, index) => {
+          {filteredGroups.map((group) => {
             const groupPending = pendingGroupIds.has(group.id);
+            const orderIndex = groups.findIndex((item) => item.id === group.id);
             return (
               <article
                 key={group.id}
@@ -289,7 +334,7 @@ export function GroupsPage() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="truncate text-lg font-bold">{group.name}</h2>
-                      <span className="rounded-md border border-line px-2 py-0.5 text-xs font-semibold text-ink/60">#{index + 1}</span>
+                      <span className="rounded-md border border-line px-2 py-0.5 text-xs font-semibold text-ink/60">#{orderIndex + 1}</span>
                     </div>
                     <p className="mt-1 text-sm text-ink/60">
                       {group.channel_count} channels · {numberRange(group)}
@@ -321,6 +366,7 @@ export function GroupsPage() {
             </article>
           )})}
         </section>
+        )
       )}
       {sortModalOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
