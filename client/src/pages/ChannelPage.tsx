@@ -117,7 +117,9 @@ function StreamStatusLog({ channelId }: { channelId: number }) {
   }, [channelId]);
 
   const latestFiles = status?.files.slice(-8).reverse() ?? [];
-  const logText = status?.stderr?.trim() || status?.message || "Waiting for the player to start an FFmpeg HLS session.";
+  const logText = status?.stderr?.trim()
+    || status?.message
+    || (status ? "FFmpeg HLS session is active; waiting for first segment files." : "Waiting for the player to start an FFmpeg HLS session.");
   const playlistLines = status?.playlist?.trim().split("\n").slice(-12).join("\n") ?? "";
 
   return (

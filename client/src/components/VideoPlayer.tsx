@@ -45,7 +45,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     const waitForPreparedHls = async () => {
       const started = Date.now();
       let lastError = "";
-      while (!disposed && Date.now() - started < 60_000) {
+      while (!disposed && Date.now() - started < 30_000) {
         prepareAbort = new AbortController();
         try {
           const response = await fetch(`${transcodeHlsSrc}?prepare=${Date.now()}`, {
@@ -55,8 +55,8 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           if (response.ok) {
             const playlist = await response.text();
             const segmentCount = playlist.match(/segment_\d{5}\.ts/g)?.length ?? 0;
-            if (playlist.includes("#EXTINF") && segmentCount >= 4) return;
-            lastError = `FFmpeg is preparing the first video segments (${segmentCount}/4).`;
+            if (playlist.includes("#EXTINF") && segmentCount >= 2) return;
+            lastError = `FFmpeg is preparing the first video segments (${segmentCount}/2).`;
           } else {
             lastError = `FFmpeg HLS is not ready yet (${response.status}).`;
           }
@@ -66,7 +66,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
         } finally {
           prepareAbort = null;
         }
-        setLoadingMessage("Preparing stream...");
+        setLoadingMessage(lastError || "Preparing stream...");
         await wait(1000);
       }
       throw new Error(lastError || "Timed out preparing the FFmpeg HLS stream.");

@@ -28,9 +28,9 @@ const hlsSessions = new Map<number, HlsSession>();
 const hlsFallbackModes = new Map<number, { mode: HlsMode; streamUrl: string }>();
 const HLS_IDLE_TIMEOUT_MS = 30 * 1000;
 const FFMPEG_PROBE_OPTIONS = [
-  "-analyzeduration", "50000000",
-  "-probesize", "50000000",
-  "-max_probe_packets", "500000",
+  "-analyzeduration", "8000000",
+  "-probesize", "8000000",
+  "-max_probe_packets", "100000",
   "-err_detect", "ignore_err"
 ];
 const FFMPEG_TIMESTAMP_OPTIONS = [
@@ -73,8 +73,8 @@ async function waitForReadyPlaylist(dir: string, timeoutMs: number) {
         .map((line) => line.trim())
         .filter((line) => /^segment_\d{5}\.ts$/.test(line));
 
-      if (segments.length >= 3) {
-        const readySegments = await Promise.all(segments.slice(-3).map(async (segment) => {
+      if (segments.length >= 2) {
+        const readySegments = await Promise.all(segments.slice(-2).map(async (segment) => {
           try {
             const stat = await fs.promises.stat(path.join(dir, segment));
             return stat.size > 0;
@@ -265,7 +265,6 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-fflags", "+genpts+igndts+discardcorrupt",
     ...FFMPEG_PROBE_OPTIONS,
     ...FFMPEG_TIMESTAMP_OPTIONS,
-    "-re",
     "-i", "pipe:0",
     ...hlsOutputOptions(mode),
     "-max_muxing_queue_size", "1024",
@@ -405,7 +404,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
 
     const filePath = path.join(session.dir, file);
     if (file === "index.m3u8") {
-      await waitForReadyPlaylist(session.dir, 30_000);
+      await waitForReadyPlaylist(session.dir, 20_000);
     } else {
       await waitForFile(filePath, 10_000);
     }
