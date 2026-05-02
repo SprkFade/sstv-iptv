@@ -265,10 +265,10 @@ function hlsOutputOptions(mode: HlsMode) {
     "-b:v", "2800k",
     "-maxrate", "3200k",
     "-bufsize", "6400k",
-    "-g", "30",
-    "-keyint_min", "30",
+    "-g", "60",
+    "-keyint_min", "60",
     "-sc_threshold", "0",
-    "-x264-params", "bframes=0:force-cfr=1:keyint=30:min-keyint=30:scenecut=0"
+    "-x264-params", "bframes=0:force-cfr=1:keyint=60:min-keyint=60:scenecut=0"
   ];
 
   if (mode === "videoOnly") {
@@ -314,8 +314,8 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-muxdelay", "0",
     "-muxpreload", "0",
     "-f", "hls",
-    "-hls_time", "1",
-    "-hls_list_size", "24",
+    "-hls_time", "2",
+    "-hls_list_size", "18",
     "-hls_delete_threshold", "18",
     "-hls_flags", "delete_segments+independent_segments+omit_endlist+program_date_time+temp_file",
     "-hls_segment_filename", segmentPattern,

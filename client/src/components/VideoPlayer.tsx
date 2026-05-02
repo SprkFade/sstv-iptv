@@ -38,6 +38,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     let mediaRecoveries = 0;
     let networkRecoveries = 0;
     let prepareAbort: AbortController | null = null;
+    let stallTimer: number | undefined;
 
     const setPlaybackError = (message: string) => {
       if (!disposed) setError(message);
@@ -85,12 +86,40 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           });
       }
     };
+    const clearStallTimer = () => {
+      if (stallTimer) window.clearTimeout(stallTimer);
+      stallTimer = undefined;
+    };
+    const recoverFromStall = () => {
+      if (disposed || video.paused || video.ended) return;
+      if (hls?.liveSyncPosition && Number.isFinite(hls.liveSyncPosition)) {
+        const drift = Math.abs(video.currentTime - hls.liveSyncPosition);
+        if (drift > 2) video.currentTime = hls.liveSyncPosition;
+      } else if (video.seekable.length > 0) {
+        const liveEdge = video.seekable.end(video.seekable.length - 1);
+        if (Number.isFinite(liveEdge) && liveEdge > 8) video.currentTime = Math.max(0, liveEdge - 8);
+      }
+      hls?.startLoad(-1);
+      hls?.recoverMediaError();
+      requestPlayback();
+    };
+    const scheduleStallRecovery = () => {
+      clearStallTimer();
+      stallTimer = window.setTimeout(recoverFromStall, 8000);
+    };
     const onVideoError = () => {
       if (!hlsError) setPlaybackError("The browser could not decode the FFmpeg HLS stream.");
     };
-    const onPlaying = () => setPlaybackBlocked(false);
+    const onPlaying = () => {
+      clearStallTimer();
+      setPlaybackBlocked(false);
+    };
+    const onProgressing = () => clearStallTimer();
     video.addEventListener("error", onVideoError);
     video.addEventListener("playing", onPlaying);
+    video.addEventListener("timeupdate", onProgressing);
+    video.addEventListener("waiting", scheduleStallRecovery);
+    video.addEventListener("stalled", scheduleStallRecovery);
 
     void (async () => {
       try {
@@ -113,11 +142,11 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           enableWorker: true,
           lowLatencyMode: false,
           liveSyncDurationCount: 4,
-          liveMaxLatencyDurationCount: 16,
+          liveMaxLatencyDurationCount: 12,
           maxLiveSyncPlaybackRate: 1.25,
           liveDurationInfinity: true,
-          backBufferLength: 30,
-          liveBackBufferLength: 30,
+          backBufferLength: 60,
+          liveBackBufferLength: 60,
           manifestLoadingMaxRetry: 10,
           levelLoadingMaxRetry: 10,
           fragLoadingMaxRetry: 10,
@@ -162,9 +191,13 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
       disposed = true;
       prepareAbort?.abort();
       hls?.destroy();
+      clearStallTimer();
       video.removeEventListener("canplay", requestPlayback);
       video.removeEventListener("error", onVideoError);
       video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("timeupdate", onProgressing);
+      video.removeEventListener("waiting", scheduleStallRecovery);
+      video.removeEventListener("stalled", scheduleStallRecovery);
     };
   }, [mobile, retryKey, transcodeHlsSrc]);
 
