@@ -315,9 +315,9 @@ export function HomePage() {
       {error && <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
 
       {search && (
-        <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
+        <section className="min-h-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
           <h2 className="font-bold">Search results</h2>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
+          <div className="mt-3 grid max-h-64 gap-2 overflow-y-auto overscroll-contain pr-1 scrollbar-none md:max-h-80">
             {search.channels.map((channel) => (
               <Link className="flex items-center gap-3 rounded-md border border-line p-3 hover:border-accent" key={`c-${channel.id}`} to={`/channel/${channel.id}`} onClick={() => rememberBeforeNavigate(channel.id)}>
                 <ChannelLogo src={channel.logo_url} name={channel.display_name} size="sm" />
