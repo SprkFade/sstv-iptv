@@ -54,8 +54,9 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           });
           if (response.ok) {
             const playlist = await response.text();
-            if (playlist.includes("#EXTINF") && /segment_\d{5}\.ts/.test(playlist)) return;
-            lastError = "FFmpeg is preparing the first video segments.";
+            const segmentCount = playlist.match(/segment_\d{5}\.ts/g)?.length ?? 0;
+            if (playlist.includes("#EXTINF") && segmentCount >= 6) return;
+            lastError = `FFmpeg is preparing the first video segments (${segmentCount}/6).`;
           } else {
             lastError = `FFmpeg HLS is not ready yet (${response.status}).`;
           }
