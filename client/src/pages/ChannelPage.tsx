@@ -120,6 +120,7 @@ function formatBytes(bytes: number | undefined) {
 function StreamStatusLog({ channelId, playerTrace }: { channelId: number; playerTrace: string[] }) {
   const [status, setStatus] = useState<StreamStatus | null>(null);
   const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     let disposed = false;
@@ -135,7 +136,7 @@ function StreamStatusLog({ channelId, playerTrace }: { channelId: number; player
       } catch (err) {
         if (!disposed) setError(err instanceof Error ? err.message : "Unable to load stream status");
       } finally {
-        if (!disposed) timeout = window.setTimeout(poll, 2000);
+        if (!disposed) timeout = window.setTimeout(poll, expanded ? 2000 : 10000);
       }
     };
 
@@ -145,7 +146,7 @@ function StreamStatusLog({ channelId, playerTrace }: { channelId: number; player
       disposed = true;
       if (timeout) window.clearTimeout(timeout);
     };
-  }, [channelId]);
+  }, [channelId, expanded]);
 
   const latestFiles = status?.files.filter((file) => /^segment_\d{5}\.ts$/.test(file.name)).slice(-8).reverse() ?? [];
   const logText = status?.stderr?.trim()
@@ -154,25 +155,34 @@ function StreamStatusLog({ channelId, playerTrace }: { channelId: number; player
   const playlistLines = status?.playlist?.trim().split("\n").slice(-12).join("\n") ?? "";
   const eventLines = status?.trace?.events.slice(-12).map((event) => `${new Date(event.at).toLocaleTimeString()} ${event.message}`).join("\n") ?? "";
   const playerLines = playerTrace.slice(-18).join("\n");
+  const statusText = error ? "Status unavailable" : status?.active ? "FFmpeg running" : "FFmpeg stopped";
+  const statusDetail = [
+    status?.mode === "videoOnly" ? "video-only fallback" : "",
+    typeof status?.exitCode === "number" ? `exit ${status.exitCode}` : "",
+    status?.trace?.latestSegment ? `latest segment ${formatAge(status.trace.latestSegmentAgeMs)}` : ""
+  ].filter(Boolean).join(" · ");
 
   return (
-    <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <details
+      open={expanded}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+      className="rounded-md border border-line bg-panel shadow-soft"
+    >
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden">
         <div>
-          <h2 className="text-xl font-bold">Live stream log</h2>
-          <p className="text-sm text-ink/60">Updates every 2 seconds while this page is open.</p>
+          <h2 className="text-base font-bold">Stream diagnostics</h2>
+          <p className="text-sm text-ink/60">{expanded ? "Updates every 2 seconds while open." : statusDetail || "Open for stream logs and segment details."}</p>
         </div>
         <div className="rounded-md border border-line px-3 py-2 text-sm font-semibold">
-          {error ? "Status unavailable" : status?.active ? "FFmpeg running" : "FFmpeg stopped"}
-          {status?.mode === "videoOnly" ? ", video-only fallback" : ""}
-          {typeof status?.exitCode === "number" ? `, exit ${status.exitCode}` : ""}
+          {statusText}
         </div>
-      </div>
+      </summary>
 
-      {error && <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
+      <div className="border-t border-line p-4">
+        {error && <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
 
-      {status?.trace && (
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+        {status?.trace && (
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
           <div className="rounded-md border border-line bg-mist p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink/50">Newest segment</div>
             <div className="mt-1 text-sm font-bold">{status.trace.latestSegment?.name ?? "none"}</div>
@@ -207,46 +217,47 @@ function StreamStatusLog({ channelId, playerTrace }: { channelId: number; player
             <div className="mt-1 text-sm font-bold">{status.trace.quality.output.label}</div>
             <div className="text-xs text-ink/60">browser HLS</div>
           </div>
-        </div>
-      )}
+          </div>
+        )}
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="min-w-0 rounded-md border border-line bg-black/40 p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">FFmpeg stderr</div>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-ink/80 scrollbar-none">{logText}</pre>
-        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="min-w-0 rounded-md border border-line bg-black/40 p-3">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">FFmpeg stderr</div>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-ink/80 scrollbar-none">{logText}</pre>
+          </div>
 
-        <div className="grid gap-3">
-          <div className="rounded-md border border-line bg-mist p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-ink/50">Segments</div>
-            <div className="mt-2 text-2xl font-bold">{status?.trace?.completedSegmentCount ?? latestFiles.length}</div>
-            <div className="mt-2 grid gap-1 text-xs text-ink/60">
-              {latestFiles.length > 0 ? latestFiles.map((file) => (
-                <div key={file.name} className="flex justify-between gap-2">
-                  <span className="truncate">{file.name}</span>
-                  <span className="shrink-0">{Math.round(file.size / 1024)} KB</span>
-                </div>
-              )) : <span>No segment files yet.</span>}
+          <div className="grid gap-3">
+            <div className="rounded-md border border-line bg-mist p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-ink/50">Segments</div>
+              <div className="mt-2 text-2xl font-bold">{status?.trace?.completedSegmentCount ?? latestFiles.length}</div>
+              <div className="mt-2 grid gap-1 text-xs text-ink/60">
+                {latestFiles.length > 0 ? latestFiles.map((file) => (
+                  <div key={file.name} className="flex justify-between gap-2">
+                    <span className="truncate">{file.name}</span>
+                    <span className="shrink-0">{Math.round(file.size / 1024)} KB</span>
+                  </div>
+                )) : <span>No segment files yet.</span>}
+              </div>
+            </div>
+
+            <div className="rounded-md border border-line bg-mist p-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">Playlist tail</div>
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-ink/70 scrollbar-none">{playlistLines || "No playlist yet."}</pre>
             </div>
           </div>
+        </div>
 
-          <div className="rounded-md border border-line bg-mist p-3">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">Playlist tail</div>
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-ink/70 scrollbar-none">{playlistLines || "No playlist yet."}</pre>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <div className="rounded-md border border-line bg-black/40 p-3">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">Session events</div>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-ink/80 scrollbar-none">{eventLines || "No session events yet."}</pre>
+          </div>
+          <div className="rounded-md border border-line bg-black/40 p-3">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">Player events</div>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-ink/80 scrollbar-none">{playerLines || "Waiting for player events."}</pre>
           </div>
         </div>
       </div>
-
-      <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        <div className="rounded-md border border-line bg-black/40 p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">Session events</div>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-ink/80 scrollbar-none">{eventLines || "No session events yet."}</pre>
-        </div>
-        <div className="rounded-md border border-line bg-black/40 p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">Player events</div>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-ink/80 scrollbar-none">{playerLines || "Waiting for player events."}</pre>
-        </div>
-      </div>
-    </section>
+    </details>
   );
 }
