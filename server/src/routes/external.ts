@@ -22,12 +22,24 @@ function xmlEscape(value: unknown) {
     .replace(/'/g, "&apos;");
 }
 
+function decodeTextEntities(value: unknown) {
+  return String(value ?? "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match, decimal: string) => String.fromCodePoint(Number.parseInt(decimal, 10)))
+    .replace(/&quot;/g, "\"")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 function attrEscape(value: unknown) {
   return xmlEscape(value).replace(/\r?\n/g, " ");
 }
 
 function m3uEscape(value: unknown) {
-  return String(value ?? "").replace(/\r?\n/g, " ").replace(/"/g, "'");
+  return decodeTextEntities(value).replace(/\r?\n/g, " ").replace(/"/g, "'");
 }
 
 function xmltvDate(value: string) {
@@ -134,8 +146,10 @@ function buildM3u(req: AuthedRequest, profile: ExternalProfile, style: "token" |
   for (const channel of channels) {
     const tvgId = `sstv-${channel.id}`;
     const channelNumber = channel.channel_number ?? channel.sort_order ?? channel.id;
+    const displayName = m3uEscape(channel.display_name);
+    const groupTitle = m3uEscape(channel.group_title ?? "Channels");
     lines.push(
-      `#EXTINF:-1 tvg-id="${attrEscape(tvgId)}" tvg-chno="${attrEscape(channelNumber)}" tvg-name="${attrEscape(channel.display_name)}" tvg-logo="${attrEscape(channel.logo_url ?? "")}" group-title="${attrEscape(channel.group_title ?? "Channels")}",${m3uEscape(channel.display_name)}`
+      `#EXTINF:-1 tvg-id="${m3uEscape(tvgId)}" tvg-chno="${m3uEscape(channelNumber)}" tvg-name="${displayName}" tvg-logo="${m3uEscape(channel.logo_url ?? "")}" group-title="${groupTitle}",${displayName}`
     );
     lines.push(streamUrl(baseUrl, profile, channel.id, style, mode));
   }
@@ -148,17 +162,18 @@ function buildXmltv() {
   const lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<tv generator-info-name="SSTV IPTV">'];
   for (const channel of channels) {
     const channelNumber = channel.channel_number ? `${channel.channel_number} ` : "";
+    const displayName = decodeTextEntities(channel.display_name);
     lines.push(`  <channel id="sstv-${channel.id}">`);
-    lines.push(`    <display-name>${xmlEscape(`${channelNumber}${channel.display_name}`)}</display-name>`);
-    if (channel.logo_url) lines.push(`    <icon src="${attrEscape(channel.logo_url)}" />`);
+    lines.push(`    <display-name>${xmlEscape(`${channelNumber}${displayName}`)}</display-name>`);
+    if (channel.logo_url) lines.push(`    <icon src="${attrEscape(decodeTextEntities(channel.logo_url))}" />`);
     lines.push("  </channel>");
   }
   for (const program of programs) {
     lines.push(`  <programme channel="sstv-${program.channel_id}" start="${xmltvDate(program.start_time)}" stop="${xmltvDate(program.end_time)}">`);
-    lines.push(`    <title>${xmlEscape(program.title)}</title>`);
-    if (program.subtitle) lines.push(`    <sub-title>${xmlEscape(program.subtitle)}</sub-title>`);
-    if (program.description) lines.push(`    <desc>${xmlEscape(program.description)}</desc>`);
-    if (program.category) lines.push(`    <category>${xmlEscape(program.category)}</category>`);
+    lines.push(`    <title>${xmlEscape(decodeTextEntities(program.title))}</title>`);
+    if (program.subtitle) lines.push(`    <sub-title>${xmlEscape(decodeTextEntities(program.subtitle))}</sub-title>`);
+    if (program.description) lines.push(`    <desc>${xmlEscape(decodeTextEntities(program.description))}</desc>`);
+    if (program.category) lines.push(`    <category>${xmlEscape(decodeTextEntities(program.category))}</category>`);
     lines.push("  </programme>");
   }
   lines.push("</tv>");
@@ -241,7 +256,7 @@ externalRouter.get("/player_api.php", (req: AuthedRequest, res) => {
   if (action === "get_live_categories") {
     return res.json(visibleExternalGroups().map((group, index) => ({
       category_id: String(index + 1),
-      category_name: group.name,
+      category_name: decodeTextEntities(group.name),
       parent_id: 0
     })));
   }
@@ -252,7 +267,7 @@ externalRouter.get("/player_api.php", (req: AuthedRequest, res) => {
     const mode = requestedOutputMode(req, profile);
     return res.json(visibleExternalChannels().map((channel) => ({
       num: channel.channel_number ?? channel.sort_order ?? channel.id,
-      name: channel.display_name,
+      name: decodeTextEntities(channel.display_name),
       stream_type: "live",
       stream_id: channel.id,
       stream_icon: channel.logo_url ?? "",
@@ -272,11 +287,11 @@ externalRouter.get("/player_api.php", (req: AuthedRequest, res) => {
     const epg_listings = visibleExternalProgramsForChannel(parsed.stream_id).map((program, index) => ({
       id: index + 1,
       epg_id: program.channel_id,
-      title: Buffer.from(program.title).toString("base64"),
+      title: Buffer.from(decodeTextEntities(program.title)).toString("base64"),
       lang: "en",
       start: program.start_time,
       end: program.end_time,
-      description: Buffer.from(program.description ?? "").toString("base64"),
+      description: Buffer.from(decodeTextEntities(program.description ?? "")).toString("base64"),
       channel_id: `sstv-${program.channel_id}`,
       start_timestamp: Math.floor(new Date(program.start_time).getTime() / 1000),
       stop_timestamp: Math.floor(new Date(program.end_time).getTime() / 1000)
@@ -287,11 +302,11 @@ externalRouter.get("/player_api.php", (req: AuthedRequest, res) => {
   if (action === "get_simple_data_table") {
     return res.json({ epg_listings: visibleExternalPrograms().map((program, index) => ({
       id: index + 1,
-      title: program.title,
+      title: decodeTextEntities(program.title),
       lang: "en",
       start: program.start_time,
       end: program.end_time,
-      description: program.description ?? "",
+      description: decodeTextEntities(program.description ?? ""),
       channel_id: `sstv-${program.channel_id}`,
       start_timestamp: Math.floor(new Date(program.start_time).getTime() / 1000),
       stop_timestamp: Math.floor(new Date(program.end_time).getTime() / 1000)
