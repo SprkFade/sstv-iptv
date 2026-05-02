@@ -397,7 +397,7 @@ export function GroupsPage() {
         )
       )}
       {sortModalOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+        <div className="fixed inset-0 z-[200] grid place-items-center bg-black/60 p-4">
           <section className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col rounded-md border border-line bg-panel p-4 shadow-soft">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -454,7 +454,7 @@ export function GroupsPage() {
         </div>
       )}
       {channelModalGroup && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+        <div className="fixed inset-0 z-[200] grid place-items-center bg-black/60 p-4">
           <section className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col rounded-md border border-line bg-panel p-4 shadow-soft">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
