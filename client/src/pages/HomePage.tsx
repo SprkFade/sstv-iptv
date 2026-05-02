@@ -47,6 +47,7 @@ export function HomePage() {
   const [hasMore, setHasMore] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const guideScrollRef = useRef<HTMLDivElement | null>(null);
+  const channelListRef = useRef<HTMLDivElement | null>(null);
   const initialLoadRef = useRef(true);
   const restoredScrollRef = useRef(false);
   const selectedChannelIdRef = useRef(restoredState.current.selectedChannelId);
@@ -60,7 +61,7 @@ export function HomePage() {
       activeGroup,
       favoritesOnly,
       query,
-      scrollY: window.scrollY,
+      scrollY: channelListRef.current?.scrollTop ?? window.scrollY,
       guideScrollLeft: guideScrollRef.current?.scrollLeft ?? 0,
       loadedCount: airing.length,
       selectedChannelId: selectedChannelIdRef.current,
@@ -131,7 +132,7 @@ export function HomePage() {
           loadGuide(airing.length, true).catch(() => undefined);
         } else {
           restoredScrollRef.current = true;
-          window.scrollTo({ top: restoredState.current.scrollY ?? 0 });
+          channelListRef.current?.scrollTo({ top: restoredState.current.scrollY ?? 0 });
         }
       });
     });
@@ -143,13 +144,14 @@ export function HomePage() {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => saveGuideState());
     };
-    window.addEventListener("scroll", remember, { passive: true });
     const guideScroll = guideScrollRef.current;
+    const channelList = channelListRef.current;
     guideScroll?.addEventListener("scroll", remember, { passive: true });
+    channelList?.addEventListener("scroll", remember, { passive: true });
     return () => {
       window.cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", remember);
       guideScroll?.removeEventListener("scroll", remember);
+      channelList?.removeEventListener("scroll", remember);
       saveGuideState();
     };
   }, [saveGuideState]);
@@ -161,7 +163,7 @@ export function HomePage() {
       if (entries[0]?.isIntersecting) {
         loadGuide(airing.length, true).catch(() => undefined);
       }
-    }, { rootMargin: "600px 0px" });
+    }, { root: channelListRef.current, rootMargin: "600px 0px" });
     observer.observe(target);
     return () => observer.disconnect();
   }, [airing.length, hasMore, loading, loadingMore, loadGuide]);
@@ -192,14 +194,14 @@ export function HomePage() {
 
   const changeGroup = (group: string) => {
     setActiveGroup(group);
-    window.scrollTo({ top: 0 });
+    channelListRef.current?.scrollTo({ top: 0 });
     saveGuideState({ activeGroup: group, scrollY: 0, guideScrollLeft: 0, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
   const toggleFavoritesOnly = () => {
     const next = !favoritesOnly;
     setFavoritesOnly(next);
-    window.scrollTo({ top: 0 });
+    channelListRef.current?.scrollTo({ top: 0 });
     saveGuideState({ favoritesOnly: next, scrollY: 0, guideScrollLeft: 0, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
@@ -208,8 +210,8 @@ export function HomePage() {
   };
 
   return (
-    <div className="grid gap-4">
-      <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
+    <div className="guide-screen flex min-h-0 flex-col gap-4">
+      <section className="min-w-0 shrink-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
           <div>
             <h1 className="text-2xl font-bold">TV guide</h1>
@@ -268,7 +270,8 @@ export function HomePage() {
         </section>
       )}
 
-      <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel shadow-soft">
+      <section className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-md border border-line bg-panel shadow-soft">
+        <div ref={channelListRef} className="guide-channel-list h-full overflow-y-auto overscroll-contain">
         <div ref={guideScrollRef} className="overflow-x-auto">
           <div className="grid min-w-[760px] gap-0">
             {loading && airing.length === 0 && (
@@ -298,6 +301,7 @@ export function HomePage() {
             <div ref={loadMoreRef} className="no-scroll-anchor h-8" />
             {loadingMore && <div className="no-scroll-anchor p-4 text-center text-sm text-ink/60">Loading more channels...</div>}
           </div>
+        </div>
         </div>
       </section>
     </div>

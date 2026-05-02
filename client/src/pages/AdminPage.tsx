@@ -88,8 +88,8 @@ export function AdminPage() {
   }
 
   return (
-    <div className="grid gap-4">
-      <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
+    <div className="grid min-w-0 gap-4">
+      <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
         <div className="mb-4 flex items-center gap-3">
           <span className="grid size-11 place-items-center rounded-md bg-accent text-white"><Database /></span>
           <div>
@@ -117,30 +117,30 @@ export function AdminPage() {
         >
           <label className="grid gap-1 text-sm font-medium">
             XtremeCodes server URL
-            <input className="min-h-11 rounded-md border border-line px-3" value={settings.xcBaseUrl} onChange={(event) => setSettings({ ...settings, xcBaseUrl: event.target.value })} />
+            <input className="min-h-11 w-full min-w-0 rounded-md border border-line px-3" value={settings.xcBaseUrl} onChange={(event) => setSettings({ ...settings, xcBaseUrl: event.target.value })} />
           </label>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="grid gap-1 text-sm font-medium">
               XC username
-              <input className="min-h-11 rounded-md border border-line px-3" value={settings.xcUsername} onChange={(event) => setSettings({ ...settings, xcUsername: event.target.value })} />
+              <input className="min-h-11 w-full min-w-0 rounded-md border border-line px-3" value={settings.xcUsername} onChange={(event) => setSettings({ ...settings, xcUsername: event.target.value })} />
             </label>
             <label className="grid gap-1 text-sm font-medium">
               XC password
-              <input className="min-h-11 rounded-md border border-line px-3" type="password" placeholder={settings.xcPasswordSet ? "Leave blank to keep current password" : ""} value={xcPassword} onChange={(event) => setXcPassword(event.target.value)} />
+              <input className="min-h-11 w-full min-w-0 rounded-md border border-line px-3" type="password" placeholder={settings.xcPasswordSet ? "Leave blank to keep current password" : ""} value={xcPassword} onChange={(event) => setXcPassword(event.target.value)} />
             </label>
           </div>
           <label className="grid gap-1 text-sm font-medium">
             XMLTV URL (optional)
-            <input className="min-h-11 rounded-md border border-line px-3" value={settings.xmltvUrl} onChange={(event) => setSettings({ ...settings, xmltvUrl: event.target.value })} />
+            <input className="min-h-11 w-full min-w-0 rounded-md border border-line px-3" value={settings.xmltvUrl} onChange={(event) => setSettings({ ...settings, xmltvUrl: event.target.value })} />
           </label>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="grid gap-1 text-sm font-medium">
               Refresh interval hours
-              <input className="min-h-11 rounded-md border border-line px-3" type="number" min={1} max={168} value={settings.refreshIntervalHours} onChange={(event) => setSettings({ ...settings, refreshIntervalHours: Number(event.target.value) })} />
+              <input className="min-h-11 w-full min-w-0 rounded-md border border-line px-3" type="number" min={1} max={168} value={settings.refreshIntervalHours} onChange={(event) => setSettings({ ...settings, refreshIntervalHours: Number(event.target.value) })} />
             </label>
             <label className="grid gap-1 text-sm font-medium">
               Plex server identifier
-              <input className="min-h-11 rounded-md border border-line px-3" value={settings.plexServerIdentifier} onChange={(event) => setSettings({ ...settings, plexServerIdentifier: event.target.value })} />
+              <input className="min-h-11 w-full min-w-0 rounded-md border border-line px-3" value={settings.plexServerIdentifier} onChange={(event) => setSettings({ ...settings, plexServerIdentifier: event.target.value })} />
             </label>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -176,7 +176,7 @@ export function AdminPage() {
       </section>
 
       {refreshStatus && (
-        <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
+        <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
           {(() => {
             const updatedAgo = refreshStatus.updatedAt ? Math.max(0, Math.floor((now - new Date(refreshStatus.updatedAt).getTime()) / 1000)) : null;
             const elapsed = refreshStatus.startedAt ? Math.max(0, Math.floor((now - new Date(refreshStatus.startedAt).getTime()) / 1000)) : null;
@@ -236,7 +236,7 @@ export function AdminPage() {
         </section>
       )}
 
-      <section className="grid gap-3 md:grid-cols-3">
+      <section className="grid min-w-0 gap-3 md:grid-cols-3">
         <div className="rounded-md border border-line bg-panel p-4 shadow-soft">
           <Server className="mb-3 text-accent" />
           <div className="text-sm text-ink/60">Plex server</div>
@@ -254,9 +254,34 @@ export function AdminPage() {
         </div>
       </section>
 
-      <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
+      <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
         <h2 className="text-xl font-bold">Refresh runs</h2>
-        <div className="mt-3 overflow-x-auto">
+        <div className="mt-3 grid gap-2 md:hidden">
+          {runs.map((run) => (
+            <article key={String(run.id)} className="rounded-md border border-line bg-mist p-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold">{String(run.status)}</span>
+                <span className="text-xs text-ink/60">{String(run.started_at ?? "")}</span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <div className="text-ink/50">Channels</div>
+                  <div className="font-bold">{String(run.channel_count ?? 0)}</div>
+                </div>
+                <div>
+                  <div className="text-ink/50">Programs</div>
+                  <div className="font-bold">{String(run.program_count ?? 0)}</div>
+                </div>
+                <div>
+                  <div className="text-ink/50">Matched</div>
+                  <div className="font-bold">{String(run.matched_count ?? 0)}</div>
+                </div>
+              </div>
+              {run.error && <p className="mt-2 line-clamp-2 text-xs text-rose-700">{String(run.error)}</p>}
+            </article>
+          ))}
+        </div>
+        <div className="mt-3 hidden overflow-x-auto md:block">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="border-b border-line text-ink/60">
               <tr><th className="py-2">Status</th><th>Started</th><th>Channels</th><th>Programs</th><th>Matched</th><th>Error</th></tr>

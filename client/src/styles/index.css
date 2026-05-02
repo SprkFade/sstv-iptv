@@ -53,6 +53,7 @@ body {
   background: rgb(var(--color-mist));
   color: rgb(var(--color-ink));
   overflow-anchor: none;
+  overflow-x: hidden;
 }
 
 button,
@@ -97,7 +98,15 @@ select {
   padding-top: var(--app-shell-top);
 }
 
+.guide-screen {
+  height: calc(100dvh - var(--app-shell-top) - 6.5rem);
+}
+
 @media (min-width: 768px) {
+  .guide-screen {
+    height: calc(100dvh - var(--app-shell-top) - 1.5rem);
+  }
+
   .desktop-side-nav {
     bottom: auto;
     left: max(1rem, calc((100vw - 80rem) / 2 + 1rem));
