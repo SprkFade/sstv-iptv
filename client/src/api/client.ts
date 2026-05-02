@@ -143,7 +143,7 @@ export interface StreamMonitorClient {
   firstSeen: string;
   ip: string;
   lastPlaylistAt: string | null;
-  lastRequestKind: "playlist" | "segment";
+  lastRequestKind: "playlist" | "segment" | "stream";
   lastSeen: string;
   lastSeenAgeMs: number;
   lastSegmentAt: string | null;
@@ -171,6 +171,7 @@ export interface StreamMonitorStream {
   lastAccess: string;
   latestSegmentAgeMs: number | null;
   mode: "normal" | "videoOnly";
+  outputType: "hls" | "mpegts";
   playlistRequests: number;
   providerConnectionCount: number;
   quality: StreamQualityPair;

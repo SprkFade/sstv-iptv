@@ -72,7 +72,7 @@ export function StreamsPage() {
             <span className="grid size-11 place-items-center rounded-md bg-accent text-white"><MonitorPlay /></span>
             <div>
               <h1 className="text-2xl font-bold">Streams</h1>
-              <p className="text-sm text-ink/60">Active HLS sessions and connected clients. Refreshes every 15 seconds.</p>
+              <p className="text-sm text-ink/60">Active HLS and MPEG-TS sessions with connected clients. Refreshes every 15 seconds.</p>
             </div>
           </div>
           <button
@@ -128,7 +128,7 @@ export function StreamsPage() {
 
         <div className="mt-4 grid gap-3">
           {monitor?.streams.map((stream) => (
-            <article key={stream.channelId} className="overflow-hidden rounded-md border border-line bg-mist">
+            <article key={`${stream.outputType}-${stream.channelId}`} className="overflow-hidden rounded-md border border-line bg-mist">
               <div className="grid gap-3 p-4">
                 <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
                   <div className="min-w-0">
@@ -138,6 +138,9 @@ export function StreamsPage() {
                       </span>
                       <span className={`rounded-md px-2 py-1 text-xs font-bold ${stream.active ? "bg-accent text-white" : "bg-rose-500 text-white"}`}>
                         {stream.active ? "Running" : `Exited ${stream.exitCode ?? ""}`}
+                      </span>
+                      <span className="rounded-md border border-line px-2 py-1 text-xs font-bold text-ink/70">
+                        {stream.outputType === "mpegts" ? "MPEG-TS" : "HLS"}
                       </span>
                       {stream.mode === "videoOnly" && <span className="rounded-md bg-gold/20 px-2 py-1 text-xs font-bold text-gold">Video only</span>}
                     </div>
@@ -163,12 +166,12 @@ export function StreamsPage() {
                     <div className="font-bold">{formatDuration(stream.runtimeMs)}</div>
                   </div>
                   <div className="rounded-md border border-line bg-panel p-3">
-                    <div className="text-ink/50">Latest segment</div>
-                    <div className="font-bold">{formatDuration(stream.latestSegmentAgeMs)} ago</div>
+                    <div className="text-ink/50">{stream.outputType === "mpegts" ? "Output" : "Latest segment"}</div>
+                    <div className="font-bold">{stream.outputType === "mpegts" ? "Live TS" : `${formatDuration(stream.latestSegmentAgeMs)} ago`}</div>
                   </div>
                   <div className="rounded-md border border-line bg-panel p-3">
-                    <div className="text-ink/50">Requests</div>
-                    <div className="font-bold">{stream.playlistRequests}/{stream.segmentRequests}</div>
+                    <div className="text-ink/50">{stream.outputType === "mpegts" ? "Streams" : "Requests"}</div>
+                    <div className="font-bold">{stream.outputType === "mpegts" ? stream.segmentRequests : `${stream.playlistRequests}/${stream.segmentRequests}`}</div>
                   </div>
                 </div>
               </div>
@@ -200,7 +203,7 @@ export function StreamsPage() {
                         </div>
                         <div>
                           <div className="text-ink/50">Requests</div>
-                          <div className="font-semibold">{client.playlistRequests}/{client.segmentRequests}</div>
+                          <div className="font-semibold">{client.lastRequestKind === "stream" ? "Live stream" : `${client.playlistRequests}/${client.segmentRequests}`}</div>
                         </div>
                         <div>
                           <div className="text-ink/50">Served</div>
