@@ -55,6 +55,8 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     setError("");
     setLoadingMessage("Preparing stream...");
     setPlaybackBlocked(false);
+    video.defaultMuted = true;
+    video.muted = true;
     video.removeAttribute("src");
     video.load();
 
@@ -77,6 +79,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     let softRecoveries = 0;
     let hardRecoveries = 0;
     let wakeLock: ScreenWakeLockSentinel | null = null;
+    let userRequestedAudio = false;
 
     const trace = (message: string) => {
       onTrace?.(`${new Date().toLocaleTimeString()} ${message}`);
@@ -160,9 +163,9 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       }
       throw new Error(lastError || "Timed out preparing the FFmpeg HLS stream.");
     };
-    const requestPlayback = () => {
+    const requestPlayback = (forceMutedAutoplay = false) => {
       if (disposed) return;
-      video.muted = true;
+      if (forceMutedAutoplay && !userRequestedAudio) video.muted = true;
       trace(`play requested (${playerState()})`);
       const playRequest = video.play();
       if (playRequest) {
@@ -255,6 +258,12 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       clearStallTimer();
     };
     const onCanPlay = () => trace(`video canplay (${playerState()})`);
+    const onVolumeChange = () => {
+      if (!video.muted && video.volume > 0) {
+        userRequestedAudio = true;
+        trace(`user enabled audio (${playerState()})`);
+      }
+    };
     const onVisibilityChange = () => syncWakeLock();
     video.addEventListener("error", onVideoError);
     video.addEventListener("playing", onPlaying);
@@ -262,6 +271,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     video.addEventListener("pause", releaseWakeLock);
     video.addEventListener("ended", releaseWakeLock);
     video.addEventListener("timeupdate", onProgressing);
+    video.addEventListener("volumechange", onVolumeChange);
     video.addEventListener("waiting", scheduleStallRecovery);
     video.addEventListener("stalled", scheduleStallRecovery);
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -275,7 +285,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
         if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = transcodeHlsSrc;
           trace("using native HLS playback");
-          video.addEventListener("canplay", requestPlayback, { once: true });
+          video.addEventListener("canplay", () => requestPlayback(true), { once: true });
           return;
         }
 
@@ -360,7 +370,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
         });
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           trace("hls.js manifest parsed");
-          requestPlayback();
+          requestPlayback(true);
         });
         hls.attachMedia(video);
         watchdogTimer = window.setInterval(() => {
@@ -399,13 +409,13 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       clearStallTimer();
       releaseWakeLock();
       if (watchdogTimer) window.clearInterval(watchdogTimer);
-      video.removeEventListener("canplay", requestPlayback);
       video.removeEventListener("error", onVideoError);
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("pause", releaseWakeLock);
       video.removeEventListener("ended", releaseWakeLock);
       video.removeEventListener("timeupdate", onProgressing);
+      video.removeEventListener("volumechange", onVolumeChange);
       video.removeEventListener("waiting", scheduleStallRecovery);
       video.removeEventListener("stalled", scheduleStallRecovery);
       document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -420,7 +430,6 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
           className="aspect-video w-full bg-black"
           autoPlay={!mobile}
           controls
-          muted
           playsInline
           title={title}
         />
