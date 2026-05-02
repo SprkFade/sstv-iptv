@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Activity, MonitorPlay, RefreshCw, Users, Wifi } from "lucide-react";
 import { api, type StreamMonitor, type StreamQuality } from "../api/client";
+
+const REFRESH_INTERVAL_OPTIONS = [2, 5, 10, 15] as const;
 
 function formatDuration(ms: number | null | undefined) {
   if (ms === null || ms === undefined) return "n/a";
@@ -45,13 +47,14 @@ export function StreamsPage() {
   const [monitor, setMonitor] = useState<StreamMonitor | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState<(typeof REFRESH_INTERVAL_OPTIONS)[number]>(15);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const response = await api.streams();
     setMonitor(response);
     setError("");
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     load().catch((err) => {
@@ -60,9 +63,9 @@ export function StreamsPage() {
     });
     const timer = window.setInterval(() => {
       load().catch((err) => setError(err instanceof Error ? err.message : "Unable to refresh stream activity"));
-    }, 15_000);
+    }, refreshIntervalSeconds * 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [load, refreshIntervalSeconds]);
 
   return (
     <div className="grid min-w-0 gap-4">
@@ -72,22 +75,36 @@ export function StreamsPage() {
             <span className="grid size-11 place-items-center rounded-md bg-accent text-white"><MonitorPlay /></span>
             <div>
               <h1 className="text-2xl font-bold">Streams</h1>
-              <p className="text-sm text-ink/60">Active HLS and MPEG-TS sessions with connected clients. Refreshes every 15 seconds.</p>
+              <p className="text-sm text-ink/60">Active HLS and MPEG-TS sessions with connected clients. Refreshes every {refreshIntervalSeconds} seconds.</p>
             </div>
           </div>
-          <button
-            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-line bg-panel px-3 text-sm font-semibold hover:bg-ink/5 disabled:opacity-60"
-            disabled={loading}
-            onClick={() => {
-              setLoading(true);
-              load().catch((err) => {
-                setError(err instanceof Error ? err.message : "Unable to refresh stream activity");
-                setLoading(false);
-              });
-            }}
-          >
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Refresh
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-ink/50">
+              Refresh
+              <select
+                className="min-h-10 rounded-md border border-line bg-panel py-2 pl-3 pr-10 text-sm font-semibold normal-case tracking-normal text-ink"
+                value={refreshIntervalSeconds}
+                onChange={(event) => setRefreshIntervalSeconds(Number(event.target.value) as (typeof REFRESH_INTERVAL_OPTIONS)[number])}
+              >
+                {REFRESH_INTERVAL_OPTIONS.map((seconds) => (
+                  <option key={seconds} value={seconds}>{seconds} seconds</option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="inline-flex min-h-10 items-center gap-2 rounded-md border border-line bg-panel px-3 text-sm font-semibold hover:bg-ink/5 disabled:opacity-60"
+              disabled={loading}
+              onClick={() => {
+                setLoading(true);
+                load().catch((err) => {
+                  setError(err instanceof Error ? err.message : "Unable to refresh stream activity");
+                  setLoading(false);
+                });
+              }}
+            >
+              <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Refresh
+            </button>
+          </div>
         </div>
         {error && <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
       </section>
