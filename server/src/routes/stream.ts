@@ -255,7 +255,18 @@ streamRouter.get("/:channelId/hls/status", async (req: AuthedRequest, res) => {
   const channelId = Number(req.params.channelId);
   if (!Number.isInteger(channelId)) return res.status(400).json({ error: "Invalid channel id" });
 
-  const session = hlsSessions.get(channelId);
+  res.setHeader("cache-control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("pragma", "no-cache");
+  res.setHeader("expires", "0");
+
+  const shouldEnsure = req.query.ensure === "1" || req.query.ensure === "true";
+  let session = hlsSessions.get(channelId);
+  if (!session && shouldEnsure) {
+    const channel = findChannel(channelId);
+    if (!channel) return res.status(404).json({ error: "Channel not found" });
+    session = ensureHlsSession(channelId, channel.stream_url);
+  }
+
   if (!session) {
     return res.json({
       active: false,
@@ -263,6 +274,8 @@ streamRouter.get("/:channelId/hls/status", async (req: AuthedRequest, res) => {
       message: "No FFmpeg HLS session has been started for this channel in this container."
     });
   }
+
+  session.lastAccess = Date.now();
 
   let files: Array<{ name: string; size: number; modified: string }> = [];
   let playlist = "";

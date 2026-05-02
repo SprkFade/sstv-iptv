@@ -137,7 +137,10 @@ export const api = {
   favorites: () => request<{ favorites: Channel[] }>("/api/favorites"),
   addFavorite: (id: number) => request<{ ok: true }>(`/api/favorites/${id}`, { method: "POST" }),
   removeFavorite: (id: number) => request<{ ok: true }>(`/api/favorites/${id}`, { method: "DELETE" }),
-  streamStatus: (id: number) => request<StreamStatus>(`/api/stream/${id}/hls/status`),
+  streamStatus: (id: number, ensure = false) =>
+    request<StreamStatus>(`/api/stream/${id}/hls/status?ensure=${ensure ? "1" : "0"}&_=${Date.now()}`, {
+      cache: "no-store"
+    }),
   settings: () => request<{
     xcBaseUrl: string;
     xcUsername: string;
