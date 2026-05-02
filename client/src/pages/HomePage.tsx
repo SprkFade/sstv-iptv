@@ -32,6 +32,18 @@ function readGuideState(): Partial<GuideState> {
   }
 }
 
+function mergeUniqueChannels(current: Airing[], incoming: Airing[]) {
+  const seen = new Set(current.map((item) => item.channel_id));
+  return [
+    ...current,
+    ...incoming.filter((item) => {
+      if (seen.has(item.channel_id)) return false;
+      seen.add(item.channel_id);
+      return true;
+    })
+  ];
+}
+
 export function HomePage() {
   const restoredState = useRef(readGuideState());
   const [airing, setAiring] = useState<Airing[]>([]);
@@ -51,6 +63,7 @@ export function HomePage() {
   const initialLoadRef = useRef(true);
   const restoredScrollRef = useRef(false);
   const selectedChannelIdRef = useRef(restoredState.current.selectedChannelId);
+  const guideRequestSeqRef = useRef(0);
   const [params] = useSearchParams();
 
   useEffect(() => {
@@ -92,17 +105,21 @@ export function HomePage() {
   };
 
   const loadGuide = useCallback(async (offset = 0, append = false, limit = PAGE_SIZE) => {
+    const requestSeq = ++guideRequestSeqRef.current;
     if (append) setLoadingMore(true);
     else setLoading(true);
     setError("");
     try {
       const guide = await api.currentGuide(guideParams(offset, limit));
-      setAiring((current) => append ? [...current, ...guide.airing] : guide.airing);
+      if (requestSeq !== guideRequestSeqRef.current) return;
+      setAiring((current) => append ? mergeUniqueChannels(current, guide.airing) : guide.airing);
       setTotal(guide.total);
       setHasMore(guide.hasMore);
     } catch (err) {
+      if (requestSeq !== guideRequestSeqRef.current) return;
       setError(err instanceof Error ? err.message : "Unable to load guide");
     } finally {
+      if (requestSeq !== guideRequestSeqRef.current) return;
       setLoading(false);
       setLoadingMore(false);
     }
@@ -198,6 +215,11 @@ export function HomePage() {
   };
 
   const changeGroup = (group: string) => {
+    restoredScrollRef.current = true;
+    selectedChannelIdRef.current = undefined;
+    setAiring([]);
+    setTotal(0);
+    setHasMore(false);
     setActiveGroup(group);
     channelListRef.current?.scrollTo({ top: 0 });
     saveGuideState({ activeGroup: group, scrollY: 0, guideScrollLeft: 0, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
@@ -205,6 +227,11 @@ export function HomePage() {
 
   const toggleFavoritesOnly = () => {
     const next = !favoritesOnly;
+    restoredScrollRef.current = true;
+    selectedChannelIdRef.current = undefined;
+    setAiring([]);
+    setTotal(0);
+    setHasMore(false);
     setFavoritesOnly(next);
     channelListRef.current?.scrollTo({ top: 0 });
     saveGuideState({ favoritesOnly: next, scrollY: 0, guideScrollLeft: 0, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
