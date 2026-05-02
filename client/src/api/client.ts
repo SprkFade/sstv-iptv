@@ -75,6 +75,31 @@ export interface StreamStatus {
   playlist?: string;
   stderr?: string;
   message?: string;
+  trace?: {
+    completedSegmentCount: number;
+    events: Array<{ at: string; message: string }>;
+    inputBytes: number;
+    lastInputAgeMs: number | null;
+    latestSegment: { name: string; size: number; modified: string } | null;
+    latestSegmentAgeMs: number | null;
+    playlistAgeMs: number | null;
+    playlistStats: {
+      mediaSequence: number;
+      segmentCount: number;
+      targetDuration: number;
+      windowSeconds: number;
+    };
+    requests: {
+      playlist: number;
+      segment: number;
+      lastPlaylistAgeMs: number | null;
+      lastSegmentAgeMs: number | null;
+      lastSegmentName: string;
+    };
+    runtimeMs: number;
+    startedAt: string;
+    tempFiles: string[];
+  };
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {

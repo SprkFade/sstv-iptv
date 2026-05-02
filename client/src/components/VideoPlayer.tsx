@@ -10,7 +10,22 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function VideoPlayer({ channelId, src, title }: { channelId: number; src: string; title: string }) {
+type VideoPlayerProps = {
+  channelId: number;
+  src: string;
+  title: string;
+  onTrace?: (message: string) => void;
+};
+
+function formatRanges(ranges: TimeRanges) {
+  const values: string[] = [];
+  for (let index = 0; index < ranges.length; index += 1) {
+    values.push(`${ranges.start(index).toFixed(1)}-${ranges.end(index).toFixed(1)}`);
+  }
+  return values.length ? values.join(",") : "none";
+}
+
+export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
@@ -40,12 +55,20 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     let prepareAbort: AbortController | null = null;
     let stallTimer: number | undefined;
 
+    const trace = (message: string) => {
+      onTrace?.(`${new Date().toLocaleTimeString()} ${message}`);
+    };
+    const playerState = () => (
+      `t=${video.currentTime.toFixed(1)} ready=${video.readyState} network=${video.networkState} buffered=${formatRanges(video.buffered)} seekable=${formatRanges(video.seekable)}`
+    );
     const setPlaybackError = (message: string) => {
+      trace(`error: ${message} (${playerState()})`);
       if (!disposed) setError(message);
     };
     const waitForPreparedHls = async () => {
       const started = Date.now();
       let lastError = "";
+      trace("preparing FFmpeg HLS session");
       while (!disposed && Date.now() - started < 30_000) {
         prepareAbort = new AbortController();
         try {
@@ -56,7 +79,10 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           if (response.ok) {
             const playlist = await response.text();
             const segmentCount = playlist.match(/segment_\d{5}\.ts/g)?.length ?? 0;
-            if (playlist.includes("#EXTINF") && segmentCount >= 2) return;
+            if (playlist.includes("#EXTINF") && segmentCount >= 2) {
+              trace(`prepared HLS playlist with ${segmentCount} segments`);
+              return;
+            }
             lastError = `FFmpeg is preparing the first video segments (${segmentCount}/2).`;
           } else {
             lastError = `FFmpeg HLS is not ready yet (${response.status}).`;
@@ -75,13 +101,16 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     const requestPlayback = () => {
       if (disposed) return;
       video.muted = true;
+      trace(`play requested (${playerState()})`);
       const playRequest = video.play();
       if (playRequest) {
         playRequest
           .then(() => {
+            trace(`play started (${playerState()})`);
             if (!disposed) setPlaybackBlocked(false);
           })
           .catch(() => {
+            trace(`play blocked by browser (${playerState()})`);
             if (!disposed) setPlaybackBlocked(true);
           });
       }
@@ -92,18 +121,27 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     };
     const recoverFromStall = () => {
       if (disposed || video.paused || video.ended) return;
+      trace(`stall recovery started (${playerState()})`);
       if (hls?.liveSyncPosition && Number.isFinite(hls.liveSyncPosition)) {
         const drift = Math.abs(video.currentTime - hls.liveSyncPosition);
-        if (drift > 2) video.currentTime = hls.liveSyncPosition;
+        if (drift > 2) {
+          trace(`seeking to hls.js live sync ${hls.liveSyncPosition.toFixed(1)} from drift ${drift.toFixed(1)}s`);
+          video.currentTime = hls.liveSyncPosition;
+        }
       } else if (video.seekable.length > 0) {
         const liveEdge = video.seekable.end(video.seekable.length - 1);
-        if (Number.isFinite(liveEdge) && liveEdge > 8) video.currentTime = Math.max(0, liveEdge - 8);
+        if (Number.isFinite(liveEdge) && liveEdge > 8) {
+          const target = Math.max(0, liveEdge - 8);
+          trace(`seeking near live edge ${target.toFixed(1)} from edge ${liveEdge.toFixed(1)}`);
+          video.currentTime = target;
+        }
       }
       hls?.startLoad(-1);
       hls?.recoverMediaError();
       requestPlayback();
     };
     const scheduleStallRecovery = () => {
+      trace(`video stalled/waiting; recovery scheduled (${playerState()})`);
       clearStallTimer();
       stallTimer = window.setTimeout(recoverFromStall, 8000);
     };
@@ -112,11 +150,14 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
     };
     const onPlaying = () => {
       clearStallTimer();
+      trace(`video playing (${playerState()})`);
       setPlaybackBlocked(false);
     };
     const onProgressing = () => clearStallTimer();
+    const onCanPlay = () => trace(`video canplay (${playerState()})`);
     video.addEventListener("error", onVideoError);
     video.addEventListener("playing", onPlaying);
+    video.addEventListener("canplay", onCanPlay);
     video.addEventListener("timeupdate", onProgressing);
     video.addEventListener("waiting", scheduleStallRecovery);
     video.addEventListener("stalled", scheduleStallRecovery);
@@ -129,6 +170,7 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
 
         if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = transcodeHlsSrc;
+          trace("using native HLS playback");
           video.addEventListener("canplay", requestPlayback, { once: true });
           return;
         }
@@ -154,7 +196,17 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           levelLoadingRetryDelay: 1000,
           fragLoadingRetryDelay: 1000
         });
+        hls.on(Hls.Events.MANIFEST_LOADED, (_event, data) => {
+          trace(`manifest loaded levels=${data.levels?.length ?? 0}`);
+        });
+        hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
+          trace(`level loaded live=${data.details.live} seq=${data.details.startSN}-${data.details.endSN} window=${data.details.totalduration.toFixed(1)}s`);
+        });
+        hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
+          trace(`fragment loaded sn=${data.frag.sn} duration=${data.frag.duration.toFixed(1)}s`);
+        });
         hls.on(Hls.Events.ERROR, (_event, data) => {
+          trace(`hls.js ${data.fatal ? "fatal " : ""}${data.type}:${data.details} (${playerState()})`);
           if (!data.fatal) return;
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveries < 12) {
             networkRecoveries += 1;
@@ -176,8 +228,14 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           const reason = [data.type, data.details].filter(Boolean).join(": ");
           setPlaybackError(`FFmpeg HLS failed${reason ? ` (${reason}${code})` : code ? ` (${code.trim()})` : ""}.`);
         });
-        hls.on(Hls.Events.MEDIA_ATTACHED, () => hls?.loadSource(transcodeHlsSrc));
-        hls.on(Hls.Events.MANIFEST_PARSED, requestPlayback);
+        hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+          trace("hls.js media attached");
+          hls?.loadSource(transcodeHlsSrc);
+        });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          trace("hls.js manifest parsed");
+          requestPlayback();
+        });
         hls.attachMedia(video);
       } catch (err) {
         if (!disposed) {
@@ -195,11 +253,12 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
       video.removeEventListener("canplay", requestPlayback);
       video.removeEventListener("error", onVideoError);
       video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("timeupdate", onProgressing);
       video.removeEventListener("waiting", scheduleStallRecovery);
       video.removeEventListener("stalled", scheduleStallRecovery);
     };
-  }, [mobile, retryKey, transcodeHlsSrc]);
+  }, [mobile, onTrace, retryKey, transcodeHlsSrc]);
 
   return (
     <div className="overflow-hidden rounded-md border border-line bg-black">

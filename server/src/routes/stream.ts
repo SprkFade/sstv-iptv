@@ -12,12 +12,23 @@ export const streamRouter = Router();
 
 type HlsSession = {
   dir: string;
+  events: Array<{ at: string; message: string }>;
   exited: boolean;
   exitCode: number | null;
+  inputBytes: number;
   inputAbort: AbortController;
+  lastInputAt: number | null;
   lastAccess: number;
   mode: HlsMode;
   process: ChildProcessWithoutNullStreams;
+  requestStats: {
+    playlist: number;
+    segment: number;
+    lastPlaylistAt: number | null;
+    lastSegmentAt: number | null;
+    lastSegmentName: string;
+  };
+  startedAt: number;
   stderr: string;
   streamUrl: string;
 };
@@ -44,6 +55,7 @@ const FFMPEG_TIMESTAMP_OPTIONS = [
 ];
 const STREAM_INPUT_RETRY_LIMIT = 12;
 const STREAM_LOG_BUFFER_LENGTH = 16_000;
+const STREAM_EVENT_BUFFER_LENGTH = 80;
 
 function findChannel(channelId: number) {
   return getDb()
@@ -128,6 +140,10 @@ function appendStderr(current: string, message: string) {
   return (current + message).slice(-STREAM_LOG_BUFFER_LENGTH);
 }
 
+function recordSessionEvent(session: HlsSession, message: string) {
+  session.events = [...session.events, { at: new Date().toISOString(), message }].slice(-STREAM_EVENT_BUFFER_LENGTH);
+}
+
 function hasMalformedEac3Audio(stderr: string) {
   return /Could not find codec parameters.+Audio:\s*eac3[\s\S]+unspecified sample rate/i.test(stderr);
 }
@@ -178,7 +194,8 @@ function streamInputErrorMessage(error: unknown) {
 function pipeProviderStreamToFfmpeg(
   streamUrl: string,
   ffmpeg: ChildProcessWithoutNullStreams,
-  onError: (message: string) => void
+  onError: (message: string) => void,
+  onInputChunk?: (bytes: number) => void
 ) {
   const abort = new AbortController();
 
@@ -202,6 +219,9 @@ function pipeProviderStreamToFfmpeg(
         consecutiveFailures = 0;
         const input = Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
         const destroyInput = () => input.destroy();
+        input.on("data", (chunk: Buffer) => {
+          onInputChunk?.(chunk.byteLength);
+        });
         input.on("error", (error) => {
           if (!abort.signal.aborted) onError(`\nNode stream input error: ${error.message}`);
         });
@@ -289,6 +309,51 @@ function hlsOutputOptions(mode: HlsMode) {
   ];
 }
 
+function parsePlaylistStats(playlist: string) {
+  const lines = playlist.split(/\r?\n/).map((line) => line.trim());
+  const targetDuration = Number(lines.find((line) => line.startsWith("#EXT-X-TARGETDURATION:"))?.split(":")[1] ?? 0);
+  const mediaSequence = Number(lines.find((line) => line.startsWith("#EXT-X-MEDIA-SEQUENCE:"))?.split(":")[1] ?? 0);
+  const durations = lines
+    .filter((line) => line.startsWith("#EXTINF:"))
+    .map((line) => Number(line.replace("#EXTINF:", "").split(",")[0]))
+    .filter((value) => Number.isFinite(value));
+  return {
+    mediaSequence: Number.isFinite(mediaSequence) ? mediaSequence : 0,
+    segmentCount: lines.filter((line) => /^segment_\d{5}\.ts$/.test(line)).length,
+    targetDuration: Number.isFinite(targetDuration) ? targetDuration : 0,
+    windowSeconds: Math.round(durations.reduce((total, duration) => total + duration, 0))
+  };
+}
+
+function buildTrace(session: HlsSession, files: Array<{ name: string; size: number; modified: string }>, playlist: string) {
+  const now = Date.now();
+  const completeSegments = files.filter((file) => /^segment_\d{5}\.ts$/.test(file.name));
+  const tempFiles = files.filter((file) => file.name.endsWith(".tmp")).map((file) => file.name);
+  const latestSegment = completeSegments.at(-1) ?? null;
+  const playlistFile = files.find((file) => file.name === "index.m3u8");
+
+  return {
+    completedSegmentCount: completeSegments.length,
+    events: session.events,
+    inputBytes: session.inputBytes,
+    lastInputAgeMs: session.lastInputAt ? now - session.lastInputAt : null,
+    latestSegment,
+    latestSegmentAgeMs: latestSegment ? now - new Date(latestSegment.modified).getTime() : null,
+    playlistAgeMs: playlistFile ? now - new Date(playlistFile.modified).getTime() : null,
+    playlistStats: parsePlaylistStats(playlist),
+    requests: {
+      playlist: session.requestStats.playlist,
+      segment: session.requestStats.segment,
+      lastPlaylistAgeMs: session.requestStats.lastPlaylistAt ? now - session.requestStats.lastPlaylistAt : null,
+      lastSegmentAgeMs: session.requestStats.lastSegmentAt ? now - session.requestStats.lastSegmentAt : null,
+      lastSegmentName: session.requestStats.lastSegmentName
+    },
+    runtimeMs: now - session.startedAt,
+    startedAt: new Date(session.startedAt).toISOString(),
+    tempFiles
+  };
+}
+
 function ensureHlsSession(channelId: number, streamUrl: string) {
   const existing = hlsSessions.get(channelId);
   const mode = hlsModeForChannel(channelId, streamUrl);
@@ -324,18 +389,34 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
 
   const session: HlsSession = {
     dir,
+    events: [],
     exited: false,
     exitCode: null,
+    inputBytes: 0,
     inputAbort: new AbortController(),
+    lastInputAt: null,
     lastAccess: Date.now(),
     mode,
     process: ffmpeg,
+    requestStats: {
+      playlist: 0,
+      segment: 0,
+      lastPlaylistAt: null,
+      lastSegmentAt: null,
+      lastSegmentName: ""
+    },
+    startedAt: Date.now(),
     stderr: mode === "videoOnly" ? "Malformed EAC3 audio was detected earlier; using video-only fallback for this channel.\n" : "",
     streamUrl
   };
+  recordSessionEvent(session, `Started FFmpeg HLS session in ${mode} mode.`);
 
   session.inputAbort = pipeProviderStreamToFfmpeg(streamUrl, ffmpeg, (message) => {
     session.stderr = appendStderr(session.stderr, message);
+    recordSessionEvent(session, message.trim());
+  }, (bytes) => {
+    session.inputBytes += bytes;
+    session.lastInputAt = Date.now();
   });
 
   ffmpeg.stderr.setEncoding("utf8");
@@ -344,6 +425,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     if (session.mode === "normal" && hasMalformedEac3Audio(session.stderr)) {
       hlsFallbackModes.set(channelId, { mode: "videoOnly", streamUrl });
       session.stderr = appendStderr(session.stderr, "\nMalformed EAC3 audio detected; restarting this channel with video-only fallback.\n");
+      recordSessionEvent(session, "Malformed EAC3 audio detected; restarting with video-only fallback.");
       if (!session.process.killed) session.process.kill("SIGTERM");
     }
   });
@@ -351,12 +433,14 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   ffmpeg.on("error", (error) => {
     session.exited = true;
     session.stderr = appendStderr(session.stderr, error.message);
+    recordSessionEvent(session, `FFmpeg process error: ${error.message}`);
   });
 
   ffmpeg.on("close", (code) => {
     session.exited = true;
     session.exitCode = code;
     session.inputAbort.abort();
+    recordSessionEvent(session, `FFmpeg exited with code ${code ?? "unknown"}.`);
     if (Date.now() - session.lastAccess < HLS_IDLE_TIMEOUT_MS) {
       console.warn("FFmpeg HLS transcode exited", {
         channelId,
@@ -422,6 +506,7 @@ streamRouter.get("/:channelId/hls/status", async (req: AuthedRequest, res) => {
     files,
     mode: session.mode,
     playlist,
+    trace: buildTrace(session, files, playlist),
     stderr: redactStreamDetails(sanitizeFfmpegStderrForStatus(session.stderr), session.streamUrl)
   });
 });
@@ -443,6 +528,14 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
   try {
     const session = ensureHlsSession(channelId, channel.stream_url);
     session.lastAccess = Date.now();
+    if (file === "index.m3u8") {
+      session.requestStats.playlist += 1;
+      session.requestStats.lastPlaylistAt = Date.now();
+    } else {
+      session.requestStats.segment += 1;
+      session.requestStats.lastSegmentAt = Date.now();
+      session.requestStats.lastSegmentName = file;
+    }
 
     const filePath = path.join(session.dir, file);
     if (file === "index.m3u8") {
