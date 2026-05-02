@@ -74,7 +74,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-mist text-ink">
-      <header className="app-header sticky-chrome z-40 border-b border-line bg-mist/95 backdrop-blur">
+      <header className="app-header sticky-chrome z-[90] border-b border-line bg-mist/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3">
           <div className="flex min-w-0 items-center gap-4">
             <Link to="/" className="flex shrink-0 items-center gap-2 text-base font-bold">
@@ -120,14 +120,14 @@ function Shell({ children }: { children: React.ReactNode }) {
               <LogOut size={19} />
             </button>
             )}
-            {navUser && mobileMenuOpen && (
-              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-56 overflow-hidden rounded-md border border-line bg-panel p-2 shadow-soft md:hidden" role="menu">
-                {mobileNavLinks}
-              </div>
-            )}
           </div>
         </div>
       </header>
+      {navUser && mobileMenuOpen && (
+        <div className="fixed right-4 top-[4.25rem] z-[120] w-56 overflow-hidden rounded-md border border-line bg-panel p-2 shadow-soft md:hidden" role="menu">
+          {mobileNavLinks}
+        </div>
+      )}
       <div className="app-shell mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 pb-6 pt-4">
         <main className="min-w-0">{children}</main>
       </div>
