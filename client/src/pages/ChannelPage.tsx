@@ -7,6 +7,18 @@ import { ProgramBar } from "../components/ProgramBar";
 import { VideoPlayer } from "../components/VideoPlayer";
 import { formatTime } from "../utils/time";
 
+const UPCOMING_WINDOW_HOURS = 12;
+
+function guideWindowParams() {
+  const start = new Date();
+  const end = new Date(start.getTime() + UPCOMING_WINDOW_HOURS * 60 * 60 * 1000);
+  const params = new URLSearchParams({
+    start: start.toISOString(),
+    end: end.toISOString()
+  });
+  return `?${params.toString()}`;
+}
+
 export function ChannelPage() {
   const { id = "" } = useParams();
   const [channel, setChannel] = useState<Channel | null>(null);
@@ -15,7 +27,7 @@ export function ChannelPage() {
   const [playerTrace, setPlayerTrace] = useState<string[]>([]);
 
   const load = async () => {
-    const response = await api.channelGuide(id);
+    const response = await api.channelGuide(id, guideWindowParams());
     setChannel(response.channel);
     setPrograms(response.programs);
   };

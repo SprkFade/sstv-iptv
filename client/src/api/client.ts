@@ -159,7 +159,7 @@ export const api = {
   pollPlexPin: (id: number) => request<{ authenticated: boolean }>(`/api/auth/plex/pin/${id}`),
   currentGuide: (params = "") => request<{ airing: Airing[]; at: string; start: string; end: string; total: number; limit: number; offset: number; hasMore: boolean }>(`/api/guide/current${params}`),
   channels: (params = "") => request<{ channels: Channel[]; groups: string[] }>(`/api/channels${params}`),
-  channelGuide: (id: string) => request<{ channel: Channel; programs: Program[] }>(`/api/guide/channel/${id}`),
+  channelGuide: (id: string, params = "") => request<{ channel: Channel; programs: Program[] }>(`/api/guide/channel/${id}${params}`),
   search: (q: string) => request<{ channels: Channel[]; programs: Array<Program & { channel_id: number; channel_name: string; logo_url: string }> }>(`/api/search?q=${encodeURIComponent(q)}`),
   favorites: () => request<{ favorites: Channel[] }>("/api/favorites"),
   addFavorite: (id: number) => request<{ ok: true }>(`/api/favorites/${id}`, { method: "POST" }),
