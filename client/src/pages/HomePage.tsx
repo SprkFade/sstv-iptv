@@ -13,6 +13,7 @@ const GUIDE_DEFAULT_LOOKBACK_MINUTES = 30;
 const GUIDE_TOTAL_HOURS = GUIDE_LOOKBACK_HOURS + GUIDE_FUTURE_HOURS;
 const MINUTE_WIDTH = 5;
 const CHANNEL_COLUMN_WIDTH = 260;
+const COMPACT_CHANNEL_COLUMN_WIDTH = 150;
 const TIMELINE_WIDTH = GUIDE_TOTAL_HOURS * 60 * MINUTE_WIDTH;
 
 type GuideState = {
@@ -94,6 +95,11 @@ function currentProgram(item: Airing) {
   ));
 }
 
+function compactGuidePreferred() {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia?.("(max-width: 900px), (pointer: coarse)").matches ?? false;
+}
+
 export function HomePage() {
   const restoredState = useRef(readGuideState());
   const guideNowRef = useRef(new Date());
@@ -112,6 +118,7 @@ export function HomePage() {
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [compactGuide, setCompactGuide] = useState(() => compactGuidePreferred());
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const guideScrollRef = useRef<HTMLDivElement | null>(null);
   const filterScrollRef = useRef<HTMLDivElement | null>(null);
@@ -125,6 +132,15 @@ export function HomePage() {
   useEffect(() => {
     document.body.classList.add("guide-page-locked");
     return () => document.body.classList.remove("guide-page-locked");
+  }, []);
+
+  useEffect(() => {
+    const query = window.matchMedia?.("(max-width: 900px), (pointer: coarse)");
+    if (!query) return;
+    const update = () => setCompactGuide(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
   }, []);
 
   useEffect(() => {
@@ -331,7 +347,8 @@ export function HomePage() {
   const currentOffset = Math.max(0, Math.min(TIMELINE_WIDTH, minutesBetween(guideStartRef.current, now) * MINUTE_WIDTH));
   const initialNowOffset = GUIDE_LOOKBACK_HOURS * 60 * MINUTE_WIDTH;
   const defaultGuideScrollLeft = Math.max(0, initialNowOffset - GUIDE_DEFAULT_LOOKBACK_MINUTES * MINUTE_WIDTH);
-  const guideTemplateColumns = `${CHANNEL_COLUMN_WIDTH}px ${TIMELINE_WIDTH}px`;
+  const channelColumnWidth = compactGuide ? COMPACT_CHANNEL_COLUMN_WIDTH : CHANNEL_COLUMN_WIDTH;
+  const guideTemplateColumns = `${channelColumnWidth}px ${TIMELINE_WIDTH}px`;
 
   return (
     <div className="guide-screen flex min-h-0 flex-col gap-4">
@@ -438,10 +455,10 @@ export function HomePage() {
             }}
             className="guide-channel-list scrollbar-none h-full overflow-auto overscroll-contain"
           >
-          <div className="relative grid" style={{ width: CHANNEL_COLUMN_WIDTH + TIMELINE_WIDTH, gridTemplateColumns: guideTemplateColumns }}>
+          <div className="relative grid" style={{ width: channelColumnWidth + TIMELINE_WIDTH, gridTemplateColumns: guideTemplateColumns }}>
             <div
               className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-accent shadow-[0_0_12px_rgba(77,166,255,0.7)]"
-              style={{ left: CHANNEL_COLUMN_WIDTH + currentOffset }}
+              style={{ left: channelColumnWidth + currentOffset }}
             />
             <div className="sticky left-0 top-0 z-[60] flex h-14 items-center border-b border-r border-line bg-panel px-4">
               <div>
@@ -472,18 +489,20 @@ export function HomePage() {
               const programs = item.programs ?? [];
               return (
                 <article id={`guide-channel-${item.channel_id}`} key={item.channel_id} className="contents">
-                  <div className="sticky left-0 z-30 grid min-h-24 grid-cols-[4rem_minmax(0,1fr)_2.75rem] items-center gap-3 border-b border-r border-line bg-panel px-3">
-                    <Link to={`/channel/${item.channel_id}`} onClick={() => rememberBeforeNavigate(item.channel_id)}>
-                      <ChannelLogo src={item.logo_url} name={item.display_name} size="sm" />
-                    </Link>
+                  <div className={`sticky left-0 z-30 grid ${compactGuide ? "min-h-20 grid-cols-1 px-2" : "min-h-24 grid-cols-[4rem_minmax(0,1fr)_2.75rem] px-3"} items-center gap-3 border-b border-r border-line bg-panel`}>
+                    {!compactGuide && (
+                      <Link to={`/channel/${item.channel_id}`} onClick={() => rememberBeforeNavigate(item.channel_id)}>
+                        <ChannelLogo src={item.logo_url} name={item.display_name} size="sm" />
+                      </Link>
+                    )}
                     <Link to={`/channel/${item.channel_id}`} className="min-w-0" onClick={() => rememberBeforeNavigate(item.channel_id)}>
                       <div className="text-xs font-semibold uppercase text-ink/45">CH {item.channel_number ?? item.sort_order + 1}</div>
                       <div className="truncate text-sm font-bold">{item.display_name}</div>
                       <div className="truncate text-xs text-ink/55">{item.group_title}</div>
                     </Link>
-                    <FavoriteButton active={Boolean(item.favorite)} onClick={() => toggleFavorite(item).catch(() => undefined)} />
+                    {!compactGuide && <FavoriteButton active={Boolean(item.favorite)} onClick={() => toggleFavorite(item).catch(() => undefined)} />}
                   </div>
-                  <div className="relative min-h-24 border-b border-line bg-mist/35" style={{ width: TIMELINE_WIDTH }}>
+                  <div className={`relative ${compactGuide ? "min-h-20" : "min-h-24"} border-b border-line bg-mist/35`} style={{ width: TIMELINE_WIDTH }}>
                     {timeMarkers.map((marker) => (
                       <div key={`${item.channel_id}-${marker.left}`} className="pointer-events-none absolute inset-y-0 border-l border-line/45" style={{ left: marker.left }} />
                     ))}
