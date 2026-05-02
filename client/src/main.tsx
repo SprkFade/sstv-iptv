@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { Heart, Home, LogOut, MonitorPlay, Moon, Settings, Star, Sun, Tv } from "lucide-react";
+import { Heart, Home, Layers3, LogOut, MonitorPlay, Moon, Settings, Star, Sun, Tv } from "lucide-react";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ChannelPage } from "./pages/ChannelPage";
 import { FavoritesPage } from "./pages/FavoritesPage";
 import { AdminPage } from "./pages/AdminPage";
 import { StreamsPage } from "./pages/StreamsPage";
+import { GroupsPage } from "./pages/GroupsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import "./styles/index.css";
@@ -53,6 +54,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       {navUser.role === "admin" ? (
         <>
           <Link className={itemClass} to="/streams"><MonitorPlay size={18} /> <span>Streams</span></Link>
+          <Link className={itemClass} to="/groups"><Layers3 size={18} /> <span>Groups</span></Link>
           <Link className={itemClass} to="/admin"><Settings size={18} /> <span>Admin</span></Link>
         </>
       ) : (
@@ -103,7 +105,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       </header>
       <div className={`app-shell mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 pt-4 ${navUser ? "pb-24 md:pb-6" : "pb-6"}`}>
         {navUser && (
-          <nav className={`sticky-chrome fixed inset-x-0 bottom-0 z-30 grid border-t border-line bg-panel px-2 py-2 md:hidden ${navUser.role === "admin" ? "grid-cols-4" : "grid-cols-3"}`}>
+          <nav className={`sticky-chrome fixed inset-x-0 bottom-0 z-30 grid border-t border-line bg-panel px-2 py-2 md:hidden ${navUser.role === "admin" ? "grid-cols-5" : "grid-cols-3"}`}>
             {navLinks}
           </nav>
         )}
@@ -139,6 +141,7 @@ function App() {
             <Route path="/channel/:id" element={<Protected><ChannelPage /></Protected>} />
             <Route path="/favorites" element={<Protected><FavoritesPage /></Protected>} />
             <Route path="/streams" element={<Protected admin><StreamsPage /></Protected>} />
+            <Route path="/groups" element={<Protected admin><GroupsPage /></Protected>} />
             <Route path="/admin" element={<Protected admin><AdminPage /></Protected>} />
           </Routes>
         </Shell>

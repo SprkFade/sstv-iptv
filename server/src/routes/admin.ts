@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb, setSetting, setting } from "../db/database.js";
 import { getRefreshProgress, startRefreshGuide } from "../ingest/refresh.js";
 import { plexAdminStatus } from "../services/plex.js";
+import { listChannelGroups, recalculateChannelNumbers } from "../services/channelGroups.js";
 import { getActiveStreamMonitor } from "./stream.js";
 
 export const adminRouter = Router();
@@ -38,6 +39,15 @@ const settingsSchema = z.object({
   ffmpegReconnectDelayMax: z.number().int().min(1).max(60).optional().default(5),
   ffmpegRwTimeoutSeconds: z.number().int().min(5).max(120).optional().default(15),
   ffmpegStaleRestartSeconds: z.number().int().min(0).max(300).optional().default(30)
+});
+
+const groupUpdateSchema = z.object({
+  enabled: z.boolean().optional(),
+  useChannelNameForEpg: z.boolean().optional()
+});
+
+const groupOrderSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1)
 });
 
 adminRouter.put("/settings", (req, res) => {
@@ -93,4 +103,47 @@ adminRouter.get("/users", (_req, res) => {
 
 adminRouter.get("/streams", (_req, res) => {
   res.json(getActiveStreamMonitor());
+});
+
+adminRouter.get("/groups", (_req, res) => {
+  res.json({ groups: listChannelGroups(getDb()) });
+});
+
+adminRouter.put("/groups/order", (req, res) => {
+  const body = groupOrderSchema.parse(req.body);
+  const db = getDb();
+  db.transaction(() => {
+    const update = db.prepare("UPDATE channel_groups SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+    body.ids.forEach((id, index) => update.run(index, id));
+    recalculateChannelNumbers(db);
+  })();
+  res.json({ groups: listChannelGroups(db) });
+});
+
+adminRouter.post("/groups/recalculate", (_req, res) => {
+  const db = getDb();
+  db.transaction(() => recalculateChannelNumbers(db))();
+  res.json({ groups: listChannelGroups(db) });
+});
+
+adminRouter.put("/groups/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const body = groupUpdateSchema.parse(req.body);
+  const existing = getDb().prepare("SELECT id FROM channel_groups WHERE id = ?").get(id);
+  if (!existing) return res.status(404).json({ error: "Group not found" });
+
+  const db = getDb();
+  db.transaction(() => {
+    if (typeof body.enabled === "boolean") {
+      db.prepare("UPDATE channel_groups SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .run(body.enabled ? 1 : 0, id);
+      recalculateChannelNumbers(db);
+    }
+    if (typeof body.useChannelNameForEpg === "boolean") {
+      db.prepare("UPDATE channel_groups SET use_channel_name_for_epg = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .run(body.useChannelNameForEpg ? 1 : 0, id);
+    }
+  })();
+
+  res.json({ groups: listChannelGroups(db) });
 });

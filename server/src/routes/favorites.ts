@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getDb } from "../db/database.js";
+import { groupNameSql } from "../services/channelGroups.js";
 import type { AuthedRequest } from "../types/app.js";
 
 export const favoritesRouter = Router();
@@ -10,8 +11,10 @@ favoritesRouter.get("/", (req: AuthedRequest, res) => {
       `SELECT channels.id, display_name, logo_url, group_title, stream_url, channel_number, sort_order
        FROM favorites
        JOIN channels ON channels.id = favorites.channel_id
+       JOIN channel_groups ON channel_groups.name = ${groupNameSql()} AND channel_groups.enabled = 1
        WHERE favorites.user_id = ? AND channels.enabled = 1
-       ORDER BY CASE WHEN channel_number IS NULL THEN 1 ELSE 0 END, channel_number, sort_order, display_name COLLATE NOCASE`
+       ORDER BY CASE WHEN channels.channel_number IS NULL THEN 1 ELSE 0 END,
+                channels.channel_number, channels.sort_order, channels.display_name COLLATE NOCASE`
     )
     .all(req.user!.id);
   res.json({ favorites: rows });
@@ -19,7 +22,14 @@ favoritesRouter.get("/", (req: AuthedRequest, res) => {
 
 favoritesRouter.post("/:channelId", (req: AuthedRequest, res) => {
   const channelId = Number(req.params.channelId);
-  const exists = getDb().prepare("SELECT id FROM channels WHERE id = ? AND enabled = 1").get(channelId);
+  const exists = getDb()
+    .prepare(
+      `SELECT channels.id
+       FROM channels
+       JOIN channel_groups ON channel_groups.name = ${groupNameSql()} AND channel_groups.enabled = 1
+       WHERE channels.id = ? AND channels.enabled = 1`
+    )
+    .get(channelId);
   if (!exists) return res.status(404).json({ error: "Channel not found" });
   getDb()
     .prepare("INSERT OR IGNORE INTO favorites (user_id, channel_id) VALUES (?, ?)")

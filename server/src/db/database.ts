@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { config, ensureRuntimeDirs } from "../config.js";
+import { groupNameSql } from "../services/channelGroups.js";
 
 let db: Database.Database | null = null;
 
@@ -58,6 +59,16 @@ export function migrate() {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS channel_groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      use_channel_name_for_epg INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS programs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
@@ -91,6 +102,7 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_channels_tvg_id ON channels(tvg_id);
     CREATE INDEX IF NOT EXISTS idx_channels_stream_url ON channels(stream_url);
     CREATE INDEX IF NOT EXISTS idx_channels_xmltv_channel_id ON channels(xmltv_channel_id);
+    CREATE INDEX IF NOT EXISTS idx_channel_groups_enabled_sort ON channel_groups(enabled, sort_order, name);
     CREATE INDEX IF NOT EXISTS idx_programs_channel_time ON programs(channel_id, start_time, end_time);
     CREATE INDEX IF NOT EXISTS idx_programs_time ON programs(start_time, end_time);
     CREATE INDEX IF NOT EXISTS idx_programs_title ON programs(title);
@@ -100,7 +112,10 @@ export function migrate() {
 
   addColumnIfMissing(database, "channels", "channel_number", "INTEGER");
   addColumnIfMissing(database, "channels", "sort_order", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing(database, "channel_groups", "use_channel_name_for_epg", "INTEGER NOT NULL DEFAULT 0");
   database.exec("CREATE INDEX IF NOT EXISTS idx_channels_enabled_sort ON channels(enabled, channel_number, sort_order, display_name);");
+  database.exec("CREATE INDEX IF NOT EXISTS idx_channel_groups_enabled_sort ON channel_groups(enabled, sort_order, name);");
+  backfillExistingChannelGroups(database);
 
   seedSettings();
   closeInterruptedRefreshRuns();
@@ -111,6 +126,24 @@ function addColumnIfMissing(database: Database.Database, table: string, column: 
   if (!columns.some((row) => row.name === column)) {
     database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
+}
+
+function backfillExistingChannelGroups(database: Database.Database) {
+  const count = database.prepare("SELECT COUNT(*) AS count FROM channel_groups").get() as { count: number };
+  if (count.count > 0) return;
+
+  const groups = database
+    .prepare(
+      `SELECT ${groupNameSql()} AS name,
+              MIN(COALESCE(channels.channel_number, channels.sort_order, 999999)) AS first_sort
+       FROM channels
+       WHERE channels.enabled = 1
+       GROUP BY name
+       ORDER BY first_sort, name COLLATE NOCASE`
+    )
+    .all() as Array<{ name: string }>;
+  const insert = database.prepare("INSERT OR IGNORE INTO channel_groups (name, enabled, sort_order) VALUES (?, 1, ?)");
+  groups.forEach((group, index) => insert.run(group.name, index));
 }
 
 function closeInterruptedRefreshRuns() {

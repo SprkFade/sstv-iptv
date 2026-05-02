@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb } from "../db/database.js";
 import type { AuthedRequest } from "../types/app.js";
 import { nowIso } from "../utils/time.js";
+import { groupNameSql } from "../services/channelGroups.js";
 
 export const dataRouter = Router();
 
@@ -10,6 +11,7 @@ const channelOrder = `CASE WHEN channels.channel_number IS NULL THEN 1 ELSE 0 EN
        channels.channel_number,
        channels.sort_order,
        channels.display_name COLLATE NOCASE`;
+const visibleGroupJoin = `JOIN channel_groups ON channel_groups.name = ${groupNameSql()} AND channel_groups.enabled = 1`;
 
 dataRouter.get("/channels", (req: AuthedRequest, res) => {
   const group = typeof req.query.group === "string" ? req.query.group : "";
@@ -18,7 +20,7 @@ dataRouter.get("/channels", (req: AuthedRequest, res) => {
   let where = "channels.enabled = 1";
 
   if (group) {
-    where += " AND channels.group_title = ?";
+    where += ` AND ${groupNameSql()} = ?`;
     params.push(group);
   }
   if (favoritesOnly && req.user) {
@@ -30,10 +32,11 @@ dataRouter.get("/channels", (req: AuthedRequest, res) => {
   const offset = Math.max(0, Number(req.query.offset ?? 0) || 0);
   const channels = limit === 0 ? [] : getDb()
     .prepare(
-      `SELECT channels.id, tvg_id, tvg_name, display_name, logo_url, logo_cache_path,
-              group_title, stream_url, xmltv_channel_id, channel_number, sort_order, enabled,
+      `SELECT channels.id, channels.tvg_id, channels.tvg_name, channels.display_name, channels.logo_url, channels.logo_cache_path,
+              channels.group_title, channels.stream_url, channels.xmltv_channel_id, channels.channel_number, channels.sort_order, channels.enabled,
               CASE WHEN favorites.user_id IS NULL THEN 0 ELSE 1 END AS favorite
        FROM channels
+       ${visibleGroupJoin}
        LEFT JOIN favorites ON favorites.channel_id = channels.id
         AND favorites.user_id = ${req.user ? "?" : "NULL"}
        WHERE ${where}
@@ -43,7 +46,16 @@ dataRouter.get("/channels", (req: AuthedRequest, res) => {
     .all(...(req.user ? [req.user.id] : []), ...params, limit, offset);
 
   const groups = getDb()
-    .prepare("SELECT DISTINCT group_title FROM channels WHERE enabled = 1 AND group_title != '' ORDER BY group_title")
+    .prepare(
+      `SELECT channel_groups.name AS group_title
+       FROM channel_groups
+       WHERE channel_groups.enabled = 1
+         AND EXISTS (
+           SELECT 1 FROM channels
+           WHERE channels.enabled = 1 AND ${groupNameSql()} = channel_groups.name
+         )
+       ORDER BY channel_groups.sort_order, channel_groups.name COLLATE NOCASE`
+    )
     .all() as Array<{ group_title: string }>;
 
   res.json({ channels, groups: groups.map((row) => row.group_title) });
@@ -63,7 +75,7 @@ dataRouter.get("/guide/current", (req: AuthedRequest, res) => {
   let where = "channels.enabled = 1";
 
   if (group) {
-    where += " AND channels.group_title = ?";
+    where += ` AND ${groupNameSql()} = ?`;
     params.push(group);
   }
   if (favoritesOnly) {
@@ -77,8 +89,10 @@ dataRouter.get("/guide/current", (req: AuthedRequest, res) => {
               channels.group_title, channels.stream_url, channels.channel_number, channels.sort_order,
               programs.id AS program_id, programs.title, programs.subtitle, programs.description,
               programs.category, programs.start_time, programs.end_time,
-              CASE WHEN favorites.user_id IS NULL THEN 0 ELSE 1 END AS favorite
+              CASE WHEN favorites.user_id IS NULL THEN 0 ELSE 1 END AS favorite,
+              channel_groups.use_channel_name_for_epg
        FROM channels
+       ${visibleGroupJoin}
        LEFT JOIN programs ON programs.id = (
         SELECT current_program.id
         FROM programs AS current_program
@@ -117,15 +131,39 @@ dataRouter.get("/guide/current", (req: AuthedRequest, res) => {
     }
   }
 
-  const airing = rows.map((row) => ({
-    ...row,
-    programs: programsByChannel.get(row.channel_id) ?? []
-  }));
+  const airing = rows.map((row) => {
+    const programs = programsByChannel.get(row.channel_id) ?? [];
+    if (programs.length === 0 && row.use_channel_name_for_epg) {
+      const fallback = {
+        id: -row.channel_id,
+        channel_id: row.channel_id,
+        title: row.display_name,
+        subtitle: "",
+        description: "",
+        category: row.group_title ?? "",
+        start_time: start,
+        end_time: end
+      };
+      return {
+        ...row,
+        program_id: fallback.id,
+        title: fallback.title,
+        subtitle: fallback.subtitle,
+        description: fallback.description,
+        category: fallback.category,
+        start_time: fallback.start_time,
+        end_time: fallback.end_time,
+        programs: [fallback]
+      };
+    }
+    return { ...row, programs };
+  });
 
   const total = getDb()
     .prepare(
       `SELECT COUNT(*) AS count
        FROM channels
+       ${visibleGroupJoin}
        LEFT JOIN favorites ON favorites.channel_id = channels.id
         AND favorites.user_id = ${req.user ? "?" : "NULL"}
        WHERE ${where}`
@@ -144,11 +182,13 @@ dataRouter.get("/guide/channel/:id", (req: AuthedRequest, res) => {
 
   const channel = getDb()
     .prepare(
-      `SELECT channels.*, CASE WHEN favorites.user_id IS NULL THEN 0 ELSE 1 END AS favorite
+      `SELECT channels.*, channel_groups.use_channel_name_for_epg,
+              CASE WHEN favorites.user_id IS NULL THEN 0 ELSE 1 END AS favorite
        FROM channels
+       ${visibleGroupJoin}
        LEFT JOIN favorites ON favorites.channel_id = channels.id
         AND favorites.user_id = ${req.user ? "?" : "NULL"}
-       WHERE channels.id = ? AND enabled = 1`
+       WHERE channels.id = ? AND channels.enabled = 1`
     )
     .get(...(req.user ? [req.user.id, id] : [id]));
 
@@ -162,6 +202,20 @@ dataRouter.get("/guide/channel/:id", (req: AuthedRequest, res) => {
        ORDER BY start_time`
     )
     .all(id, start, end);
+  if (programs.length === 0 && (channel as { use_channel_name_for_epg?: number }).use_channel_name_for_epg) {
+    return res.json({
+      channel,
+      programs: [{
+        id: -id,
+        title: (channel as { display_name: string }).display_name,
+        subtitle: "",
+        description: "",
+        category: (channel as { group_title?: string }).group_title ?? "",
+        start_time: start,
+        end_time: end
+      }]
+    });
+  }
   res.json({ channel, programs });
 });
 
@@ -174,10 +228,13 @@ dataRouter.get("/search", (req: AuthedRequest, res) => {
   const like = `%${q}%`;
   const channels = getDb()
     .prepare(
-      `SELECT id, display_name, logo_url, group_title, stream_url, channel_number, sort_order
+      `SELECT channels.id, channels.display_name, channels.logo_url, channels.group_title, channels.stream_url,
+              channels.channel_number, channels.sort_order
        FROM channels
-       WHERE enabled = 1 AND (display_name LIKE ? OR tvg_name LIKE ? OR group_title LIKE ?)
-       ORDER BY CASE WHEN channel_number IS NULL THEN 1 ELSE 0 END, channel_number, sort_order, display_name COLLATE NOCASE
+       ${visibleGroupJoin}
+       WHERE channels.enabled = 1 AND (display_name LIKE ? OR tvg_name LIKE ? OR group_title LIKE ?)
+       ORDER BY CASE WHEN channels.channel_number IS NULL THEN 1 ELSE 0 END,
+                channels.channel_number, channels.sort_order, channels.display_name COLLATE NOCASE
        LIMIT 40`
     )
     .all(like, like, like);
@@ -188,6 +245,7 @@ dataRouter.get("/search", (req: AuthedRequest, res) => {
               channels.display_name AS channel_name, channels.logo_url
        FROM programs
        JOIN channels ON channels.id = programs.channel_id
+       ${visibleGroupJoin}
        WHERE channels.enabled = 1 AND programs.end_time >= ?
          AND (programs.title LIKE ? OR programs.subtitle LIKE ? OR programs.description LIKE ? OR programs.category LIKE ?)
        ORDER BY programs.start_time

@@ -159,6 +159,17 @@ export interface StreamMonitor {
   streams: StreamMonitorStream[];
 }
 
+export interface ChannelGroup {
+  id: number;
+  name: string;
+  enabled: 0 | 1;
+  sort_order: number;
+  use_channel_name_for_epg: 0 | 1;
+  channel_count: number;
+  first_channel_number: number | null;
+  last_channel_number: number | null;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: "include",
@@ -254,5 +265,11 @@ export const api = {
   refreshStatus: () => request<RefreshProgress>("/api/admin/refresh-status"),
   refreshRuns: () => request<{ runs: Array<Record<string, string | number | null>> }>("/api/admin/refresh-runs"),
   users: () => request<{ users: Array<Record<string, string | number | null>> }>("/api/admin/users"),
-  streams: () => request<StreamMonitor>("/api/admin/streams")
+  streams: () => request<StreamMonitor>("/api/admin/streams"),
+  groups: () => request<{ groups: ChannelGroup[] }>("/api/admin/groups"),
+  updateGroup: (id: number, body: { enabled?: boolean; useChannelNameForEpg?: boolean }) =>
+    request<{ groups: ChannelGroup[] }>(`/api/admin/groups/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  saveGroupOrder: (ids: number[]) =>
+    request<{ groups: ChannelGroup[] }>("/api/admin/groups/order", { method: "PUT", body: JSON.stringify({ ids }) }),
+  recalculateGroups: () => request<{ groups: ChannelGroup[] }>("/api/admin/groups/recalculate", { method: "POST" })
 };

@@ -6,6 +6,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { Router } from "express";
 import { config } from "../config.js";
 import { getDb, setting } from "../db/database.js";
+import { groupNameSql } from "../services/channelGroups.js";
 import type { AuthedRequest } from "../types/app.js";
 
 export const streamRouter = Router();
@@ -104,7 +105,12 @@ function hlsRuntimeSettings(): HlsRuntimeSettings {
 
 function findChannel(channelId: number) {
   return getDb()
-    .prepare("SELECT stream_url FROM channels WHERE id = ? AND enabled = 1")
+    .prepare(
+      `SELECT stream_url
+       FROM channels
+       JOIN channel_groups ON channel_groups.name = ${groupNameSql()} AND channel_groups.enabled = 1
+       WHERE channels.id = ? AND channels.enabled = 1`
+    )
     .get(channelId) as { stream_url: string } | undefined;
 }
 

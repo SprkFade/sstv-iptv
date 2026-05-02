@@ -4,6 +4,7 @@ import { getDb, setting, setSetting } from "../db/database.js";
 import { parseSelectedXmltvPrograms, parseXmltvChannels } from "./xmltv.js";
 import { matchChannels } from "./match.js";
 import { fetchXcChannels, xcXmltvUrl, type XcCredentials } from "./xc.js";
+import { ensureChannelGroups, recalculateChannelNumbers } from "../services/channelGroups.js";
 
 const GUIDE_LOOKBACK_HOURS = 2;
 const GUIDE_LOOKAHEAD_HOURS = 24;
@@ -233,6 +234,8 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
             await yieldToEventLoop();
           }
         }
+        ensureChannelGroups(ingestDb, false);
+        recalculateChannelNumbers(ingestDb);
         ingestDb.prepare("COMMIT").run();
 
         const windowStart = new Date(Date.now() - GUIDE_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
