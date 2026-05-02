@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { ArrowDownAZ, Eye, EyeOff, GripVertical, Layers3, RefreshCw, Save, Search, X } from "lucide-react";
-import { api, type ChannelGroup } from "../api/client";
+import { api, type Channel, type ChannelGroup } from "../api/client";
+import { ChannelLogo } from "../components/ChannelLogo";
 
 function numberRange(group: ChannelGroup) {
   if (!group.enabled) return "Hidden";
@@ -16,6 +18,10 @@ function enabledCount(groups: ChannelGroup[]) {
 export function GroupsPage() {
   const [groups, setGroups] = useState<ChannelGroup[]>([]);
   const [savedGroups, setSavedGroups] = useState<ChannelGroup[]>([]);
+  const [channelModalGroup, setChannelModalGroup] = useState<ChannelGroup | null>(null);
+  const [groupChannels, setGroupChannels] = useState<Channel[]>([]);
+  const [groupChannelsLoading, setGroupChannelsLoading] = useState(false);
+  const [groupChannelsError, setGroupChannelsError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -108,6 +114,21 @@ export function GroupsPage() {
         next.delete(group.id);
         return next;
       });
+    }
+  };
+
+  const openGroupChannels = async (group: ChannelGroup) => {
+    setChannelModalGroup(group);
+    setGroupChannels([]);
+    setGroupChannelsError("");
+    setGroupChannelsLoading(true);
+    try {
+      const response = await api.groupChannels(group.id);
+      setGroupChannels(response.channels);
+    } catch (err) {
+      setGroupChannelsError(err instanceof Error ? err.message : "Unable to load group channels");
+    } finally {
+      setGroupChannelsLoading(false);
     }
   };
 
@@ -333,7 +354,14 @@ export function GroupsPage() {
                   </span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="truncate text-lg font-bold">{group.name}</h2>
+                      <button
+                        type="button"
+                        className="min-w-0 truncate text-left text-lg font-bold text-ink hover:text-accent"
+                        onClick={() => openGroupChannels(group)}
+                        title={`Show channels in ${group.name}`}
+                      >
+                        {group.name}
+                      </button>
                       <span className="rounded-md border border-line px-2 py-0.5 text-xs font-semibold text-ink/60">#{orderIndex + 1}</span>
                     </div>
                     <p className="mt-1 text-sm text-ink/60">
@@ -421,6 +449,56 @@ export function GroupsPage() {
               >
                 <Save size={16} /> Save sort
               </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {channelModalGroup && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <section className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col rounded-md border border-line bg-panel p-4 shadow-soft">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="truncate text-xl font-bold">{channelModalGroup.name}</h2>
+                <p className="mt-1 text-sm text-ink/60">
+                  {groupChannelsLoading ? "Loading channels..." : `${groupChannels.length} channel${groupChannels.length === 1 ? "" : "s"} in this group`}
+                </p>
+              </div>
+              <button
+                className="grid size-9 shrink-0 place-items-center rounded-md border border-line hover:bg-ink/5"
+                onClick={() => setChannelModalGroup(null)}
+                title="Close"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="mt-4 min-h-0 overflow-y-auto pr-1 scrollbar-none">
+              {groupChannelsLoading ? (
+                <div className="rounded-md border border-line bg-mist p-4 text-sm text-ink/60">Loading channels...</div>
+              ) : groupChannelsError ? (
+                <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{groupChannelsError}</div>
+              ) : groupChannels.length === 0 ? (
+                <div className="rounded-md border border-line bg-mist p-4 text-sm text-ink/60">No channels are currently assigned to this group.</div>
+              ) : (
+                <div className="grid gap-2">
+                  {groupChannels.map((channel) => (
+                    <Link
+                      key={channel.id}
+                      to={`/channel/${channel.id}`}
+                      className="flex min-w-0 items-center gap-3 rounded-md border border-line bg-mist p-3 transition hover:border-accent"
+                    >
+                      <div className="w-16 shrink-0 text-sm font-bold text-ink/70">
+                        {channel.channel_number ? `CH ${channel.channel_number}` : "No #"}
+                      </div>
+                      <ChannelLogo src={channel.logo_url} name={channel.display_name} size="sm" />
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold">{channel.display_name}</div>
+                        <div className="truncate text-xs text-ink/55">{channel.group_title || channelModalGroup.name}</div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         </div>

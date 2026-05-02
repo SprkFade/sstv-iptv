@@ -328,6 +328,7 @@ export const api = {
   groups: () => request<{ groups: ChannelGroup[] }>("/api/admin/groups"),
   updateGroup: (id: number, body: { enabled?: boolean; useChannelNameForEpg?: boolean }) =>
     request<{ groups: ChannelGroup[] }>(`/api/admin/groups/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  groupChannels: (id: number) => request<{ group: { id: number; name: string }; channels: Channel[] }>(`/api/admin/groups/${id}/channels`),
   saveGroupOrder: (ids: number[]) =>
     request<{ groups: ChannelGroup[] }>("/api/admin/groups/order", { method: "PUT", body: JSON.stringify({ ids }) }),
   defaultGroupSortConfig: () => request<{ prefixes: string[]; order: string[] }>("/api/admin/groups/default-sort"),

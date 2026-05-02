@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDb, setSetting, setting } from "../db/database.js";
 import { getRefreshProgress, startRefreshGuide } from "../ingest/refresh.js";
 import { plexAdminStatus } from "../services/plex.js";
-import { applyDefaultGroupSort, listChannelGroups, listGroupPrefixes, recalculateChannelNumbers, saveDefaultGroupPrefixOrder } from "../services/channelGroups.js";
+import { applyDefaultGroupSort, groupNameSql, listChannelGroups, listGroupPrefixes, recalculateChannelNumbers, saveDefaultGroupPrefixOrder } from "../services/channelGroups.js";
 import { getActiveStreamMonitor } from "./stream.js";
 import { listExternalProfiles, regenerateExternalToken, regenerateExternalXcPassword, updateExternalProfile } from "../services/externalAccess.js";
 
@@ -188,6 +188,27 @@ adminRouter.put("/groups/default-sort", (req, res) => {
   const db = getDb();
   db.transaction(() => saveDefaultGroupPrefixOrder(db, body.prefixes))();
   res.json({ groups: listChannelGroups(db), ...listGroupPrefixes(db) });
+});
+
+adminRouter.get("/groups/:id/channels", (req, res) => {
+  const id = Number(req.params.id);
+  const db = getDb();
+  const group = db.prepare("SELECT id, name FROM channel_groups WHERE id = ?").get(id) as { id: number; name: string } | undefined;
+  if (!group) return res.status(404).json({ error: "Group not found" });
+
+  const channels = db
+    .prepare(
+      `SELECT id, display_name, logo_url, group_title, stream_url, channel_number, sort_order
+       FROM channels
+       WHERE enabled = 1 AND ${groupNameSql()} = ?
+       ORDER BY
+         CASE WHEN channel_number IS NULL THEN 1 ELSE 0 END,
+         channel_number,
+         display_name COLLATE NOCASE`
+    )
+    .all(group.name);
+
+  res.json({ group, channels });
 });
 
 adminRouter.put("/groups/:id", (req, res) => {
