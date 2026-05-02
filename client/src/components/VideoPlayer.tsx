@@ -3,7 +3,9 @@ import { ExternalLink, Play, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 function isMobile() {
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const touchPoints = navigator.maxTouchPoints || 0;
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || ((/Macintosh|MacIntel/i.test(navigator.userAgent) || /MacIntel/i.test(navigator.platform)) && touchPoints > 1);
 }
 
 function wait(ms: number) {
