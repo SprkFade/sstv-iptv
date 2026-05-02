@@ -380,8 +380,8 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-muxpreload", "0",
     "-f", "hls",
     "-hls_time", "2",
-    "-hls_list_size", "18",
-    "-hls_delete_threshold", "18",
+    "-hls_list_size", "60",
+    "-hls_delete_threshold", "60",
     "-hls_flags", "delete_segments+independent_segments+omit_endlist+program_date_time+temp_file",
     "-hls_segment_filename", segmentPattern,
     "index.m3u8"
