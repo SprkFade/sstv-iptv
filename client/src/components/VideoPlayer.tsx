@@ -100,7 +100,7 @@ function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-black p-3 text-xs text-white/70">
-        <span className="font-semibold text-white">Native mobile playback starts with sound after tap</span>
+        <span className="font-semibold text-white">Native mobile playback v3 starts with sound after tap</span>
         <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={transcodeHlsSrc} target="_blank" rel="noreferrer">
           HLS <ExternalLink size={14} />
         </a>

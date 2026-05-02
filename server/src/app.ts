@@ -41,9 +41,18 @@ export function createApp() {
   app.use("/api/favorites", requireAuth, favoritesRouter);
 
   app.use(express.static(config.clientDistPath, {
-    maxAge: config.nodeEnv === "production" ? "1h" : 0
+    maxAge: config.nodeEnv === "production" ? "1h" : 0,
+    setHeaders: (res, filePath) => {
+      const name = path.basename(filePath);
+      if (name === "sw.js") {
+        res.setHeader("cache-control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader("cache-control", "public, max-age=31536000, immutable");
+      }
+    }
   }));
   app.get(/.*/, (_req, res) => {
+    res.setHeader("cache-control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.sendFile(path.join(config.clientDistPath, "index.html"));
   });
 

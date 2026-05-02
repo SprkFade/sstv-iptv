@@ -1,4 +1,4 @@
-const CACHE_NAME = "sstv-iptv-shell-v2";
+const CACHE_NAME = "sstv-iptv-shell-v3";
 const SHELL = ["/manifest.webmanifest", "/icons/icon.svg"];
 const APP_SHELL = "/";
 
@@ -30,6 +30,11 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(() => caches.match(APP_SHELL))
     );
+    return;
+  }
+
+  if (url.pathname.startsWith("/assets/")) {
+    event.respondWith(fetch(event.request, { cache: "no-store" }));
     return;
   }
 
