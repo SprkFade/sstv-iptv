@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useParams } from "react-router-dom";
 import { api, type Channel, type Program } from "../api/client";
 import { ChannelLogo } from "../components/ChannelLogo";
 import { FavoriteButton } from "../components/FavoriteButton";
@@ -31,9 +30,6 @@ export function ChannelPage() {
 
   return (
     <div className="grid gap-4">
-      <Link to="/" className="inline-flex min-h-10 w-fit items-center gap-2 rounded-md border border-line bg-panel px-3 text-sm font-semibold">
-        <ArrowLeft size={17} /> Guide
-      </Link>
       <section className="rounded-md border border-line bg-panel p-4 shadow-soft">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
