@@ -125,6 +125,31 @@ function hasMalformedEac3Audio(stderr: string) {
   return /Could not find codec parameters.+Audio:\s*eac3[\s\S]+unspecified sample rate/i.test(stderr);
 }
 
+function sanitizeFfmpegStderrForStatus(stderr: string) {
+  const noisyH264StartupPatterns = [
+    /non-existing [PS]PS \d+ referenced/i,
+    /decode_slice_header error/i,
+    /^no frame!$/i,
+    /^Last message repeated \d+ times$/i
+  ];
+  const lines = stderr.split(/\r?\n/);
+  let suppressed = 0;
+  const visible = lines.filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+    if (noisyH264StartupPatterns.some((pattern) => pattern.test(trimmed))) {
+      suppressed += 1;
+      return false;
+    }
+    return true;
+  });
+  const message = visible.join("\n").trim();
+  if (!suppressed) return message;
+
+  const startupMessage = `Suppressed ${suppressed} transient H264 startup decoder warning${suppressed === 1 ? "" : "s"} while waiting for the next keyframe/SPS/PPS.`;
+  return message ? `${message}\n${startupMessage}` : startupMessage;
+}
+
 function streamInputErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return "Unknown error";
   const details = [error.message];
@@ -380,7 +405,7 @@ streamRouter.get("/:channelId/hls/status", async (req: AuthedRequest, res) => {
     files,
     mode: session.mode,
     playlist,
-    stderr: redactStreamDetails(session.stderr, session.streamUrl)
+    stderr: redactStreamDetails(sanitizeFfmpegStderrForStatus(session.stderr), session.streamUrl)
   });
 });
 
