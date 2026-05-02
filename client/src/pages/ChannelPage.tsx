@@ -127,7 +127,7 @@ function StreamStatusLog({ channelId, playerTrace }: { channelId: number; player
 
     const poll = async () => {
       try {
-        const response = await api.streamStatus(channelId, true);
+        const response = await api.streamStatus(channelId, false);
         if (!disposed) {
           setStatus(response);
           setError("");

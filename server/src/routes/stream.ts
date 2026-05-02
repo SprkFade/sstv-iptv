@@ -238,6 +238,17 @@ function isActivePlaybackClient(session: HlsSession, client: HlsClientStats, now
   return sessionStarting && now - client.lastSeen <= HLS_CLIENT_STARTUP_GRACE_MS;
 }
 
+function activePlaybackClients(session: HlsSession, now = Date.now()) {
+  pruneSessionClients(session, now);
+  return [...session.clients.values()].filter((client) => isActivePlaybackClient(session, client, now));
+}
+
+function shouldStopInactivePlaybackSession(session: HlsSession, now = Date.now()) {
+  if (session.exited) return false;
+  const startupGrace = now - session.startedAt <= HLS_CLIENT_STARTUP_GRACE_MS && session.requestStats.segment === 0;
+  return !startupGrace && activePlaybackClients(session, now).length === 0;
+}
+
 function recordHlsClientRequest(
   req: AuthedRequest,
   session: HlsSession,
@@ -637,12 +648,15 @@ export function getActiveStreamMonitor() {
   const channelById = new Map(channelRows.map((channel) => [channel.id, channel]));
 
   const streams = [...hlsSessions.entries()]
-    .map(([channelId, session]) => {
-      pruneSessionClients(session, now);
+    .flatMap(([channelId, session]) => {
+      if (shouldStopInactivePlaybackSession(session, now)) {
+        recordSessionEvent(session, "No active segment clients remain; stopping FFmpeg session.");
+        stopHlsSession(channelId);
+        return [];
+      }
       const channel = channelById.get(channelId);
       const latestSegmentAgeMs = latestCompleteSegmentAgeMs(session);
-      const clients = [...session.clients.values()]
-        .filter((client) => isActivePlaybackClient(session, client, now))
+      const clients = activePlaybackClients(session, now)
         .sort((a, b) => b.lastSeen - a.lastSeen)
         .map((client) => ({
           id: client.id,
@@ -678,7 +692,7 @@ export function getActiveStreamMonitor() {
         latestSegmentAgeMs,
         mode: session.mode,
         playlistRequests: session.requestStats.playlist,
-        providerConnectionCount: !session.exited ? 1 : 0,
+        providerConnectionCount: !session.exited && clients.length > 0 ? 1 : 0,
         quality: streamQualities(session),
         runtimeMs: now - session.startedAt,
         segmentRequests: session.requestStats.segment,
@@ -831,6 +845,11 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
 setInterval(() => {
   const now = Date.now();
   for (const [channelId, session] of hlsSessions) {
+    if (shouldStopInactivePlaybackSession(session, now)) {
+      recordSessionEvent(session, "No active segment clients remain; stopping idle FFmpeg session.");
+      stopHlsSession(channelId);
+      continue;
+    }
     if (now - session.lastAccess > HLS_IDLE_TIMEOUT_MS) stopHlsSession(channelId);
   }
 }, 30_000).unref();
@@ -858,8 +877,6 @@ streamRouter.get("/:channelId/hls/status", async (req: AuthedRequest, res) => {
       message: "No FFmpeg HLS session has been started for this channel in this container."
     });
   }
-
-  session.lastAccess = Date.now();
 
   let files: Array<{ name: string; size: number; modified: string }> = [];
   let playlist = "";
@@ -900,21 +917,34 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
   if (!channel) return res.status(404).json({ error: "Channel not found" });
 
   try {
-    let session = ensureHlsSession(channelId, channel.stream_url);
-    session.lastAccess = Date.now();
+    const canStartSession = file === "index.m3u8" && (req.query.prepare === "1" || req.query.prepare === "true" || req.query.start === "1" || req.query.start === "true");
+    let session = hlsSessions.get(channelId);
+    if (!session || session.exited || session.streamUrl !== channel.stream_url) {
+      if (!canStartSession) {
+        return res.status(409).json({ error: "HLS session is not active. Reload the player to start a fresh stream." });
+      }
+      session = ensureHlsSession(channelId, channel.stream_url);
+    }
     if (file === "index.m3u8" && shouldRestartStaleHlsSession(session, hlsRuntimeSettings())) {
+      if (!canStartSession && activePlaybackClients(session).length === 0) {
+        return res.status(409).json({ error: "HLS session is stale. Reload the player to start a fresh stream." });
+      }
       recordSessionEvent(session, "HLS producer appears stale; restarting FFmpeg session.");
       stopHlsSession(channelId);
       session = ensureHlsSession(channelId, channel.stream_url);
-      session.lastAccess = Date.now();
     }
+    const now = Date.now();
     if (file === "index.m3u8") {
       session.requestStats.playlist += 1;
-      session.requestStats.lastPlaylistAt = Date.now();
+      session.requestStats.lastPlaylistAt = now;
+      if (now - session.startedAt <= HLS_CLIENT_STARTUP_GRACE_MS && session.requestStats.segment === 0) {
+        session.lastAccess = now;
+      }
     } else {
       session.requestStats.segment += 1;
-      session.requestStats.lastSegmentAt = Date.now();
+      session.requestStats.lastSegmentAt = now;
       session.requestStats.lastSegmentName = file;
+      session.lastAccess = now;
     }
 
     const filePath = path.join(session.dir, file);

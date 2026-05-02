@@ -52,6 +52,22 @@ function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
   const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
   const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8`, [channelId]);
   const transcodeStatusSrc = useMemo(() => `/api/stream/${channelId}/hls/status`, [channelId]);
+  const [preparedHlsSrc, setPreparedHlsSrc] = useState("");
+
+  useEffect(() => {
+    let disposed = false;
+    setPreparedHlsSrc("");
+    fetch(`${transcodeHlsSrc}?prepare=1&_=${Date.now()}`, { cache: "no-store" })
+      .then(() => {
+        if (!disposed) setPreparedHlsSrc(transcodeHlsSrc);
+      })
+      .catch(() => {
+        if (!disposed) setPreparedHlsSrc("");
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [transcodeHlsSrc]);
 
   return (
     <div className="overflow-hidden rounded-md border border-line bg-black">
@@ -60,12 +76,12 @@ function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
         controls
         playsInline
         preload="metadata"
-        src={transcodeHlsSrc}
+        src={preparedHlsSrc || undefined}
         title={title}
       />
       <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-black p-3 text-xs text-white/70">
         <span className="font-semibold text-white">Native mobile playback v4 autoloads the stream</span>
-        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={transcodeHlsSrc} target="_blank" rel="noreferrer">
+        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={`${transcodeHlsSrc}?prepare=1`} target="_blank" rel="noreferrer">
           HLS <ExternalLink size={14} />
         </a>
         <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={transcodeStatusSrc} target="_blank" rel="noreferrer">
@@ -185,7 +201,7 @@ function ManagedVideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       while (!disposed && Date.now() - started < 30_000) {
         prepareAbort = new AbortController();
         try {
-          const response = await fetch(`${transcodeHlsSrc}?prepare=${Date.now()}`, {
+          const response = await fetch(`${transcodeHlsSrc}?prepare=1&_=${Date.now()}`, {
             cache: "no-store",
             signal: prepareAbort.signal
           });
