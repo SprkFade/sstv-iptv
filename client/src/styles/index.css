@@ -51,6 +51,7 @@ body {
   margin: 0;
   background: rgb(var(--color-mist));
   color: rgb(var(--color-ink));
+  overflow-anchor: none;
 }
 
 button,
@@ -79,8 +80,28 @@ select {
   backface-visibility: hidden;
   contain: paint;
   transform: translateZ(0);
+  will-change: transform;
 }
 
 .no-scroll-anchor {
   overflow-anchor: none;
+}
+
+.app-header {
+  position: fixed;
+  inset: 0 0 auto;
+}
+
+.app-shell {
+  padding-top: 4.5rem;
+}
+
+@media (min-width: 768px) {
+  .desktop-side-nav {
+    bottom: auto;
+    left: max(1rem, calc((100vw - 80rem) / 2 + 1rem));
+    right: auto;
+    top: 5.5rem;
+    width: 220px;
+  }
 }
