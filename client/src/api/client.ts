@@ -160,6 +160,7 @@ export interface StreamMonitorClient {
 export interface StreamMonitorStream {
   active: boolean;
   channelId: number;
+  channelLogoUrl: string;
   channelName: string;
   channelNumber: number | null;
   clientCount: number;

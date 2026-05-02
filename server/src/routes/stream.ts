@@ -783,11 +783,11 @@ export function getActiveStreamMonitor() {
   const channelRows = channelIds.length
     ? getDb()
       .prepare(
-        `SELECT id, display_name, group_title, channel_number
+        `SELECT id, display_name, logo_url, group_title, channel_number
          FROM channels
          WHERE id IN (${channelIds.map(() => "?").join(",")})`
       )
-      .all(...channelIds) as Array<{ id: number; display_name: string; group_title: string; channel_number: number | null }>
+      .all(...channelIds) as Array<{ id: number; display_name: string; logo_url: string | null; group_title: string; channel_number: number | null }>
     : [];
   const channelById = new Map(channelRows.map((channel) => [channel.id, channel]));
 
@@ -833,6 +833,7 @@ export function getActiveStreamMonitor() {
       return {
         active: !session.exited,
         channelId,
+        channelLogoUrl: channel?.logo_url ?? "",
         channelName: channel?.display_name ?? `Channel ${channelId}`,
         channelNumber: channel?.channel_number ?? null,
         clientCount: clients.length,
@@ -884,6 +885,7 @@ export function getActiveStreamMonitor() {
       return {
         active: activeSessions.length > 0,
         channelId,
+        channelLogoUrl: channel?.logo_url ?? "",
         channelName: channel?.display_name ?? `Channel ${channelId}`,
         channelNumber: channel?.channel_number ?? null,
         clientCount: clients.length,
