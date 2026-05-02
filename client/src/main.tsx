@@ -45,6 +45,19 @@ function Shell({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem("sstv-theme", theme);
   }, [theme]);
 
+  const navLinks = navUser ? (
+    <>
+      <Link className={itemClass} to="/"><Home size={18} /> <span>Guide</span></Link>
+      <Link className={itemClass} to="/favorites"><Heart size={18} /> <span>Favorites</span></Link>
+      <Link className={itemClass} to="/?focus=search"><Search size={18} /> <span>Search</span></Link>
+      {navUser.role === "admin" ? (
+        <Link className={itemClass} to="/admin"><Settings size={18} /> <span>Admin</span></Link>
+      ) : (
+        <span className={itemClass}><Star size={18} /> <span>{navUser.username}</span></span>
+      )}
+    </>
+  ) : null;
+
   return (
     <div className="min-h-screen bg-mist text-ink">
       <header className="app-header sticky-chrome z-40 border-b border-line bg-mist/95 backdrop-blur">
@@ -78,19 +91,18 @@ function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
+      {navUser && (
+        <nav className="desktop-side-nav sticky-chrome fixed z-30 hidden h-fit rounded-md border border-line bg-panel p-2 shadow-soft md:block">
+          {navLinks}
+        </nav>
+      )}
       <div className={`app-shell mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 pt-4 ${navUser ? "pb-24 md:grid-cols-[220px_minmax(0,1fr)] md:pb-6" : "pb-6"}`}>
         {navUser && (
-          <nav className="desktop-side-nav sticky-chrome fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-panel px-2 py-2 md:block md:h-fit md:rounded-md md:border md:p-2 md:shadow-soft">
-            <Link className={itemClass} to="/"><Home size={18} /> <span>Guide</span></Link>
-            <Link className={itemClass} to="/favorites"><Heart size={18} /> <span>Favorites</span></Link>
-            <Link className={itemClass} to="/?focus=search"><Search size={18} /> <span>Search</span></Link>
-            {navUser.role === "admin" ? (
-              <Link className={itemClass} to="/admin"><Settings size={18} /> <span>Admin</span></Link>
-            ) : (
-              <span className={itemClass}><Star size={18} /> <span>{navUser.username}</span></span>
-            )}
+          <nav className="sticky-chrome fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-panel px-2 py-2 md:hidden">
+            {navLinks}
           </nav>
         )}
+        {navUser && <div className="hidden md:block" aria-hidden="true" />}
         <main className="min-w-0">{children}</main>
       </div>
     </div>
