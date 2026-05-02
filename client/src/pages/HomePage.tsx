@@ -10,6 +10,7 @@ const GUIDE_STATE_KEY = "sstv-guide-state";
 const GUIDE_FUTURE_HOURS = 12;
 const GUIDE_LOOKBACK_HOURS = 2;
 const GUIDE_DEFAULT_LOOKBACK_MINUTES = 30;
+const COMPACT_GUIDE_DEFAULT_LOOKBACK_MINUTES = 15;
 const GUIDE_TOTAL_HOURS = GUIDE_LOOKBACK_HOURS + GUIDE_FUTURE_HOURS;
 const MINUTE_WIDTH = 5;
 const CHANNEL_COLUMN_WIDTH = 260;
@@ -128,6 +129,10 @@ export function HomePage() {
   const selectedChannelIdRef = useRef(restoredState.current.selectedChannelId);
   const guideRequestSeqRef = useRef(0);
   const [params] = useSearchParams();
+  const initialNowOffset = GUIDE_LOOKBACK_HOURS * 60 * MINUTE_WIDTH;
+  const guideDefaultLookbackMinutes = compactGuide ? COMPACT_GUIDE_DEFAULT_LOOKBACK_MINUTES : GUIDE_DEFAULT_LOOKBACK_MINUTES;
+  const defaultGuideScrollLeft = Math.max(0, initialNowOffset - guideDefaultLookbackMinutes * MINUTE_WIDTH);
+  const desktopDefaultGuideScrollLeft = Math.max(0, initialNowOffset - GUIDE_DEFAULT_LOOKBACK_MINUTES * MINUTE_WIDTH);
 
   useEffect(() => {
     document.body.classList.add("guide-page-locked");
@@ -223,9 +228,12 @@ export function HomePage() {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         const savedLeft = restoredState.current.guideScrollLeft;
-        const restoredLeft = typeof savedLeft === "number" && savedLeft > 0
-          ? Math.abs(savedLeft - initialNowOffset) < 2 ? defaultGuideScrollLeft : savedLeft
-          : defaultGuideScrollLeft;
+        let restoredLeft = defaultGuideScrollLeft;
+        if (typeof savedLeft === "number" && savedLeft > 0) {
+          const savedAtOldDefault = compactGuide && Math.abs(savedLeft - desktopDefaultGuideScrollLeft) < 2;
+          const savedAtNowEdge = Math.abs(savedLeft - initialNowOffset) < 2;
+          restoredLeft = savedAtNowEdge || savedAtOldDefault ? defaultGuideScrollLeft : savedLeft;
+        }
         guideScrollRef.current?.scrollTo({ left: restoredLeft });
         const selectedChannelId = selectedChannelIdRef.current;
         const selectedRow = selectedChannelId
@@ -243,7 +251,7 @@ export function HomePage() {
         }
       });
     });
-  }, [airing.length, hasMore, loadGuide, loading, loadingMore]);
+  }, [airing.length, compactGuide, defaultGuideScrollLeft, desktopDefaultGuideScrollLeft, hasMore, initialNowOffset, loadGuide, loading, loadingMore]);
 
   useEffect(() => {
     let frame = 0;
@@ -345,8 +353,6 @@ export function HomePage() {
   const searchResultCount = (search?.channels.length ?? 0) + (search?.programs.length ?? 0);
   const timeMarkers = buildTimeMarkers(guideStartRef.current);
   const currentOffset = Math.max(0, Math.min(TIMELINE_WIDTH, minutesBetween(guideStartRef.current, now) * MINUTE_WIDTH));
-  const initialNowOffset = GUIDE_LOOKBACK_HOURS * 60 * MINUTE_WIDTH;
-  const defaultGuideScrollLeft = Math.max(0, initialNowOffset - GUIDE_DEFAULT_LOOKBACK_MINUTES * MINUTE_WIDTH);
   const channelColumnWidth = compactGuide ? COMPACT_CHANNEL_COLUMN_WIDTH : CHANNEL_COLUMN_WIDTH;
   const guideTemplateColumns = `${channelColumnWidth}px ${TIMELINE_WIDTH}px`;
 
