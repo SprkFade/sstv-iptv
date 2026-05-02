@@ -48,59 +48,23 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
 }
 
 function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [started, setStarted] = useState(false);
   const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
   const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
   const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8`, [channelId]);
   const transcodeStatusSrc = useMemo(() => `/api/stream/${channelId}/hls/status`, [channelId]);
 
-  useEffect(() => {
-    setStarted(false);
-    const video = videoRef.current;
-    if (!video) return;
-    video.pause();
-    video.removeAttribute("src");
-    video.load();
-  }, [channelId]);
-
-  const startNativePlayback = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    setStarted(true);
-    video.defaultMuted = false;
-    video.muted = false;
-    video.src = transcodeHlsSrc;
-    video.load();
-    void video.play().catch(() => {
-      // Safari can require a second tap while the live playlist is preparing.
-    });
-  };
-
   return (
     <div className="overflow-hidden rounded-md border border-line bg-black">
-      <div className="relative">
-        <video
-          ref={videoRef}
-          className="aspect-video w-full bg-black"
-          controls
-          playsInline
-          preload="none"
-          title={title}
-        />
-        {!started && (
-          <button
-            className="absolute inset-0 grid place-items-center bg-black text-white"
-            onClick={startNativePlayback}
-          >
-            <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-white/15 backdrop-blur">
-              <Play size={30} fill="currentColor" />
-            </span>
-          </button>
-        )}
-      </div>
+      <video
+        className="aspect-video w-full bg-black"
+        controls
+        playsInline
+        preload="metadata"
+        src={transcodeHlsSrc}
+        title={title}
+      />
       <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-black p-3 text-xs text-white/70">
-        <span className="font-semibold text-white">Native mobile playback v3 starts with sound after tap</span>
+        <span className="font-semibold text-white">Native mobile playback v4 autoloads the stream</span>
         <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={transcodeHlsSrc} target="_blank" rel="noreferrer">
           HLS <ExternalLink size={14} />
         </a>
