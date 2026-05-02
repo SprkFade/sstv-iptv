@@ -55,6 +55,7 @@ export function HomePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [hasLoadedGuide, setHasLoadedGuide] = useState(false);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -115,6 +116,7 @@ export function HomePage() {
       setAiring((current) => append ? mergeUniqueChannels(current, guide.airing) : guide.airing);
       setTotal(guide.total);
       setHasMore(guide.hasMore);
+      setHasLoadedGuide(true);
     } catch (err) {
       if (requestSeq !== guideRequestSeqRef.current) return;
       setError(err instanceof Error ? err.message : "Unable to load guide");
@@ -214,11 +216,17 @@ export function HomePage() {
     await loadGuide(0, false, Math.max(PAGE_SIZE, airing.length));
   };
 
+  const invalidateGuideRequests = () => {
+    guideRequestSeqRef.current += 1;
+    setLoading(false);
+    setLoadingMore(false);
+  };
+
   const changeGroup = (group: string) => {
+    if (group === activeGroup) return;
+    invalidateGuideRequests();
     restoredScrollRef.current = true;
     selectedChannelIdRef.current = undefined;
-    setAiring([]);
-    setTotal(0);
     setHasMore(false);
     setActiveGroup(group);
     channelListRef.current?.scrollTo({ top: 0 });
@@ -227,10 +235,9 @@ export function HomePage() {
 
   const toggleFavoritesOnly = () => {
     const next = !favoritesOnly;
+    invalidateGuideRequests();
     restoredScrollRef.current = true;
     selectedChannelIdRef.current = undefined;
-    setAiring([]);
-    setTotal(0);
     setHasMore(false);
     setFavoritesOnly(next);
     channelListRef.current?.scrollTo({ top: 0 });
@@ -306,7 +313,7 @@ export function HomePage() {
         <div ref={channelListRef} className="guide-channel-list scrollbar-none h-full overflow-y-auto overscroll-contain">
         <div ref={guideScrollRef} className="overflow-x-auto">
           <div className="grid min-w-[760px] gap-0">
-            {loading && airing.length === 0 && (
+            {loading && airing.length === 0 && !hasLoadedGuide && (
               <div className="p-4 text-sm text-ink/60">Loading guide...</div>
             )}
             {!loading && airing.length === 0 && (
