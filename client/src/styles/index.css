@@ -74,3 +74,13 @@ select {
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+.sticky-chrome {
+  backface-visibility: hidden;
+  contain: paint;
+  transform: translateZ(0);
+}
+
+.no-scroll-anchor {
+  overflow-anchor: none;
+}

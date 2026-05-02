@@ -47,7 +47,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-mist text-ink">
-      <header className="sticky top-0 z-20 border-b border-line bg-mist/95 backdrop-blur">
+      <header className="sticky-chrome sticky top-0 z-20 border-b border-line bg-mist/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3">
           <Link to="/" className="flex items-center gap-2 text-base font-bold">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-white">
@@ -80,7 +80,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       </header>
       <div className={`mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 pt-4 ${navUser ? "pb-24 md:grid-cols-[220px_minmax(0,1fr)] md:pb-6" : "pb-6"}`}>
         {navUser && (
-          <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-panel px-2 py-2 md:sticky md:top-[73px] md:block md:h-fit md:rounded-md md:border md:p-2 md:shadow-soft">
+          <nav className="sticky-chrome fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-panel px-2 py-2 md:sticky md:top-[73px] md:block md:h-fit md:rounded-md md:border md:p-2 md:shadow-soft">
             <Link className={itemClass} to="/"><Home size={18} /> <span>Guide</span></Link>
             <Link className={itemClass} to="/favorites"><Heart size={18} /> <span>Favorites</span></Link>
             <Link className={itemClass} to="/?focus=search"><Search size={18} /> <span>Search</span></Link>
