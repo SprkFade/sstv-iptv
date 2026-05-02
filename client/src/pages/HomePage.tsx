@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Filter, Search, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter, Search, Star } from "lucide-react";
 import { api, type Airing } from "../api/client";
 import { ChannelLogo } from "../components/ChannelLogo";
 import { FavoriteButton } from "../components/FavoriteButton";
@@ -60,6 +60,7 @@ export function HomePage() {
   const [hasMore, setHasMore] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const guideScrollRef = useRef<HTMLDivElement | null>(null);
+  const filterScrollRef = useRef<HTMLDivElement | null>(null);
   const channelListRef = useRef<HTMLDivElement | null>(null);
   const initialLoadRef = useRef(true);
   const restoredScrollRef = useRef(false);
@@ -248,6 +249,15 @@ export function HomePage() {
     saveGuideState({ selectedChannelId: channelId });
   };
 
+  const scrollFilters = (direction: -1 | 1) => {
+    const scroller = filterScrollRef.current;
+    if (!scroller) return;
+    scroller.scrollBy({
+      left: direction * Math.max(240, Math.floor(scroller.clientWidth * 0.75)),
+      behavior: "smooth"
+    });
+  };
+
   return (
     <div className="guide-screen flex min-h-0 flex-col gap-4">
       <section className="min-w-0 shrink-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
@@ -267,8 +277,17 @@ export function HomePage() {
             />
           </div>
         </div>
-        <div className="mt-4 w-full max-w-full overflow-x-auto pb-1 scrollbar-none">
-          <div className="flex min-w-max gap-2">
+        <div className="mt-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+          <button
+            type="button"
+            className="hidden size-10 shrink-0 place-items-center rounded-md border border-line bg-panel text-ink/70 hover:bg-ink/5 hover:text-ink sm:grid"
+            onClick={() => scrollFilters(-1)}
+            title="Scroll filters left"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <div ref={filterScrollRef} className="w-full max-w-full overflow-x-auto pb-1 scrollbar-none">
+            <div className="flex min-w-max gap-2">
           <button className={`flex min-h-10 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${!activeGroup ? "border-accent bg-accent text-white" : "border-line bg-panel"}`} onClick={() => changeGroup("")}>
             <Filter size={16} /> All
           </button>
@@ -280,7 +299,16 @@ export function HomePage() {
               {group}
             </button>
           ))}
+            </div>
           </div>
+          <button
+            type="button"
+            className="hidden size-10 shrink-0 place-items-center rounded-md border border-line bg-panel text-ink/70 hover:bg-ink/5 hover:text-ink sm:grid"
+            onClick={() => scrollFilters(1)}
+            title="Scroll filters right"
+          >
+            <ChevronRight size={18} />
+          </button>
         </div>
       </section>
 
