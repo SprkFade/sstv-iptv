@@ -1,5 +1,5 @@
 import Hls from "hls.js";
-import { ExternalLink, Play, RotateCcw } from "lucide-react";
+import { Play, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 function isMobile() {
@@ -66,13 +66,10 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
   return <ManagedVideoPlayer channelId={channelId} src={src} title={title} onTrace={onTrace} />;
 }
 
-function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
+function MobileNativeVideoPlayer({ channelId, title }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const clientSession = useMemo(() => createPlaybackSessionId(), []);
-  const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
-  const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
   const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8?clientSession=${encodeURIComponent(clientSession)}`, [channelId, clientSession]);
-  const transcodeStatusSrc = useMemo(() => `/api/stream/${channelId}/hls/status`, [channelId]);
   const [preparedHlsSrc, setPreparedHlsSrc] = useState("");
 
   useEffect(() => {
@@ -130,29 +127,11 @@ function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
         src={preparedHlsSrc || undefined}
         title={title}
       />
-      <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-black p-3 text-xs text-white/70">
-        <span className="font-semibold text-white">Native mobile playback v4 autoloads the stream</span>
-        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={`${transcodeHlsSrc}&prepare=1`} target="_blank" rel="noreferrer">
-          HLS <ExternalLink size={14} />
-        </a>
-        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={transcodeStatusSrc} target="_blank" rel="noreferrer">
-          Status <ExternalLink size={14} />
-        </a>
-        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={transcodeSrc} target="_blank" rel="noreferrer">
-          TS <ExternalLink size={14} />
-        </a>
-        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={proxySrc} target="_blank" rel="noreferrer">
-          Proxy <ExternalLink size={14} />
-        </a>
-        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={src} target="_blank" rel="noreferrer">
-          Direct <ExternalLink size={14} />
-        </a>
-      </div>
     </div>
   );
 }
 
-function ManagedVideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps) {
+function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const clientSession = useMemo(() => createPlaybackSessionId(), []);
   const [error, setError] = useState("");
@@ -160,10 +139,7 @@ function ManagedVideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
   const [loadingMessage, setLoadingMessage] = useState("Preparing stream...");
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const mobile = false;
-  const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
-  const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
   const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8?clientSession=${encodeURIComponent(clientSession)}`, [channelId, clientSession]);
-  const transcodeStatusSrc = useMemo(() => `/api/stream/${channelId}/hls/status`, [channelId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -582,26 +558,9 @@ function ManagedVideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       {error && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-black p-3 text-sm text-white">
           <span>{error}</span>
-          <div className="flex flex-wrap gap-2">
-            <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={transcodeHlsSrc} target="_blank" rel="noreferrer">
-              HLS <ExternalLink size={16} />
-            </a>
-            <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={transcodeStatusSrc} target="_blank" rel="noreferrer">
-              Status <ExternalLink size={16} />
-            </a>
-            <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={transcodeSrc} target="_blank" rel="noreferrer">
-              TS <ExternalLink size={16} />
-            </a>
-            <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={proxySrc} target="_blank" rel="noreferrer">
-              Proxy <ExternalLink size={16} />
-            </a>
-            <a className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 font-semibold" href={src} target="_blank" rel="noreferrer">
-              Direct <ExternalLink size={16} />
-            </a>
-            <button className="inline-flex min-h-10 items-center gap-2 rounded-md bg-accent px-3 font-semibold" onClick={() => setRetryKey((value) => value + 1)}>
-              <RotateCcw size={16} /> Retry
-            </button>
-          </div>
+          <button className="inline-flex min-h-10 items-center gap-2 rounded-md bg-accent px-3 font-semibold" onClick={() => setRetryKey((value) => value + 1)}>
+            <RotateCcw size={16} /> Retry
+          </button>
         </div>
       )}
     </div>
