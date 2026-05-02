@@ -17,6 +17,17 @@ type VideoPlayerProps = {
   onTrace?: (message: string) => void;
 };
 
+type ScreenWakeLockSentinel = EventTarget & {
+  released: boolean;
+  release: () => Promise<void>;
+};
+
+type NavigatorWithWakeLock = Navigator & {
+  wakeLock?: {
+    request: (type: "screen") => Promise<ScreenWakeLockSentinel>;
+  };
+};
+
 function formatRanges(ranges: TimeRanges) {
   const values: string[] = [];
   for (let index = 0; index < ranges.length; index += 1) {
@@ -65,6 +76,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     let playlistFragmentLagRecoveries = 0;
     let softRecoveries = 0;
     let hardRecoveries = 0;
+    let wakeLock: ScreenWakeLockSentinel | null = null;
 
     const trace = (message: string) => {
       onTrace?.(`${new Date().toLocaleTimeString()} ${message}`);
@@ -75,6 +87,45 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     const setPlaybackError = (message: string) => {
       trace(`error: ${message} (${playerState()})`);
       if (!disposed) setError(message);
+    };
+    const onWakeLockRelease = () => {
+      wakeLock = null;
+      trace("screen wake lock released");
+    };
+    const releaseWakeLock = () => {
+      const lock = wakeLock;
+      wakeLock = null;
+      if (!lock) return;
+      lock.removeEventListener("release", onWakeLockRelease);
+      if (!lock.released) {
+        void lock.release().catch((err) => {
+          trace(`screen wake lock release failed: ${err instanceof Error ? err.message : "unknown error"}`);
+        });
+      }
+    };
+    const requestWakeLock = async () => {
+      if (disposed || video.paused || video.ended || document.visibilityState !== "visible") return;
+      if (wakeLock && !wakeLock.released) return;
+      const api = (navigator as NavigatorWithWakeLock).wakeLock;
+      if (!api) {
+        trace("screen wake lock unavailable in this browser");
+        return;
+      }
+      try {
+        wakeLock = await api.request("screen");
+        wakeLock.addEventListener("release", onWakeLockRelease);
+        trace("screen wake lock active");
+      } catch (err) {
+        wakeLock = null;
+        trace(`screen wake lock request failed: ${err instanceof Error ? err.message : "unknown error"}`);
+      }
+    };
+    const syncWakeLock = () => {
+      if (!video.paused && !video.ended && document.visibilityState === "visible") {
+        void requestWakeLock();
+      } else {
+        releaseWakeLock();
+      }
     };
     const waitForPreparedHls = async () => {
       const started = Date.now();
@@ -191,6 +242,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     };
     const onPlaying = () => {
       clearStallTimer();
+      void requestWakeLock();
       trace(`video playing (${playerState()})`);
       setPlaybackBlocked(false);
     };
@@ -203,12 +255,16 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       clearStallTimer();
     };
     const onCanPlay = () => trace(`video canplay (${playerState()})`);
+    const onVisibilityChange = () => syncWakeLock();
     video.addEventListener("error", onVideoError);
     video.addEventListener("playing", onPlaying);
     video.addEventListener("canplay", onCanPlay);
+    video.addEventListener("pause", releaseWakeLock);
+    video.addEventListener("ended", releaseWakeLock);
     video.addEventListener("timeupdate", onProgressing);
     video.addEventListener("waiting", scheduleStallRecovery);
     video.addEventListener("stalled", scheduleStallRecovery);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     void (async () => {
       try {
@@ -341,14 +397,18 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       prepareAbort?.abort();
       hls?.destroy();
       clearStallTimer();
+      releaseWakeLock();
       if (watchdogTimer) window.clearInterval(watchdogTimer);
       video.removeEventListener("canplay", requestPlayback);
       video.removeEventListener("error", onVideoError);
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("canplay", onCanPlay);
+      video.removeEventListener("pause", releaseWakeLock);
+      video.removeEventListener("ended", releaseWakeLock);
       video.removeEventListener("timeupdate", onProgressing);
       video.removeEventListener("waiting", scheduleStallRecovery);
       video.removeEventListener("stalled", scheduleStallRecovery);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [mobile, onTrace, retryKey, transcodeHlsSrc]);
 
