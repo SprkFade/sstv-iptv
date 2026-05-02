@@ -280,13 +280,13 @@ export function HomePage() {
         <div className="mt-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
           <button
             type="button"
-            className="hidden size-10 shrink-0 place-items-center rounded-md border border-line bg-panel text-ink/70 hover:bg-ink/5 hover:text-ink sm:grid"
+            className="hidden min-h-10 w-10 shrink-0 place-items-center rounded-md border border-line bg-panel text-ink/70 hover:bg-ink/5 hover:text-ink sm:grid"
             onClick={() => scrollFilters(-1)}
             title="Scroll filters left"
           >
             <ChevronLeft size={18} />
           </button>
-          <div ref={filterScrollRef} className="w-full max-w-full overflow-x-auto pb-1 scrollbar-none">
+          <div ref={filterScrollRef} className="w-full max-w-full overflow-x-auto scrollbar-none">
             <div className="flex min-w-max gap-2">
           <button className={`flex min-h-10 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${!activeGroup ? "border-accent bg-accent text-white" : "border-line bg-panel"}`} onClick={() => changeGroup("")}>
             <Filter size={16} /> All
@@ -303,7 +303,7 @@ export function HomePage() {
           </div>
           <button
             type="button"
-            className="hidden size-10 shrink-0 place-items-center rounded-md border border-line bg-panel text-ink/70 hover:bg-ink/5 hover:text-ink sm:grid"
+            className="hidden min-h-10 w-10 shrink-0 place-items-center rounded-md border border-line bg-panel text-ink/70 hover:bg-ink/5 hover:text-ink sm:grid"
             onClick={() => scrollFilters(1)}
             title="Scroll filters right"
           >
