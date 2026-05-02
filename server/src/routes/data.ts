@@ -75,8 +75,15 @@ dataRouter.get("/guide/current", (req: AuthedRequest, res) => {
               programs.category, programs.start_time, programs.end_time,
               CASE WHEN favorites.user_id IS NULL THEN 0 ELSE 1 END AS favorite
        FROM channels
-       LEFT JOIN programs ON programs.channel_id = channels.id
-        AND programs.start_time <= ? AND programs.end_time > ?
+       LEFT JOIN programs ON programs.id = (
+        SELECT current_program.id
+        FROM programs AS current_program
+        WHERE current_program.channel_id = channels.id
+          AND current_program.start_time <= ?
+          AND current_program.end_time > ?
+        ORDER BY current_program.start_time DESC, current_program.end_time ASC, current_program.id
+        LIMIT 1
+       )
        LEFT JOIN favorites ON favorites.channel_id = channels.id
         AND favorites.user_id = ${req.user ? "?" : "NULL"}
        WHERE ${where}

@@ -32,6 +32,12 @@ function readGuideState(): Partial<GuideState> {
   }
 }
 
+function uniqueChannels(items: Airing[]) {
+  return items.filter((item, index, list) => (
+    list.findIndex((candidate) => candidate.channel_id === item.channel_id) === index
+  ));
+}
+
 function mergeUniqueChannels(current: Airing[], incoming: Airing[]) {
   const seen = new Set(current.map((item) => item.channel_id));
   return [
@@ -114,7 +120,7 @@ export function HomePage() {
     try {
       const guide = await api.currentGuide(guideParams(offset, limit));
       if (requestSeq !== guideRequestSeqRef.current) return;
-      setAiring((current) => append ? mergeUniqueChannels(current, guide.airing) : guide.airing);
+      setAiring((current) => append ? mergeUniqueChannels(current, guide.airing) : uniqueChannels(guide.airing));
       setTotal(guide.total);
       setHasMore(guide.hasMore);
       setHasLoadedGuide(true);
