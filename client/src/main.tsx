@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { Heart, Home, LogOut, Moon, Search, Settings, Star, Sun, Tv } from "lucide-react";
+import { Heart, Home, LogOut, Moon, Settings, Star, Sun, Tv } from "lucide-react";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ChannelPage } from "./pages/ChannelPage";
@@ -49,7 +49,6 @@ function Shell({ children }: { children: React.ReactNode }) {
     <>
       <Link className={itemClass} to="/"><Home size={18} /> <span>Guide</span></Link>
       <Link className={itemClass} to="/favorites"><Heart size={18} /> <span>Favorites</span></Link>
-      <Link className={itemClass} to="/?focus=search"><Search size={18} /> <span>Search</span></Link>
       {navUser.role === "admin" ? (
         <Link className={itemClass} to="/admin"><Settings size={18} /> <span>Admin</span></Link>
       ) : (
@@ -98,7 +97,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       )}
       <div className={`app-shell mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 pt-4 ${navUser ? "pb-24 md:grid-cols-[220px_minmax(0,1fr)] md:pb-6" : "pb-6"}`}>
         {navUser && (
-          <nav className="sticky-chrome fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-panel px-2 py-2 md:hidden">
+          <nav className="sticky-chrome fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-line bg-panel px-2 py-2 md:hidden">
             {navLinks}
           </nav>
         )}

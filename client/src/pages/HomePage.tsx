@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Filter, Search, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter, Search, Star, X } from "lucide-react";
 import { api, type Airing } from "../api/client";
 import { ChannelLogo } from "../components/ChannelLogo";
 import { FavoriteButton } from "../components/FavoriteButton";
@@ -258,6 +258,9 @@ export function HomePage() {
     });
   };
 
+  const searchActive = query.trim().length > 0;
+  const searchResultCount = (search?.channels.length ?? 0) + (search?.programs.length ?? 0);
+
   return (
     <div className="guide-screen flex min-h-0 flex-col gap-4">
       <section className="min-w-0 shrink-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
@@ -267,14 +270,28 @@ export function HomePage() {
             <p className="text-sm text-ink/60">{airing.length} of {total} channels loaded</p>
           </div>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-3 text-ink/45" size={18} />
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink/45" size={18} />
             <input
               id="guide-search"
-              className="min-h-11 w-full rounded-md border border-line pl-10 pr-3 md:w-80"
+              className="min-h-11 w-full rounded-md border border-line pl-10 pr-10 md:w-80"
               placeholder="Search channels and programs"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
+            {query && (
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-md text-ink/55 hover:bg-ink/5 hover:text-ink"
+                onClick={() => {
+                  setQuery("");
+                  setSearch(null);
+                  document.getElementById("guide-search")?.focus();
+                }}
+                title="Clear search"
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
         </div>
         <div className="mt-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
@@ -314,31 +331,35 @@ export function HomePage() {
 
       {error && <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
 
-      {search && (
-        <section className="min-h-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
-          <h2 className="font-bold">Search results</h2>
-          <div className="mt-3 grid max-h-64 gap-2 overflow-y-auto overscroll-contain pr-1 scrollbar-none md:max-h-80">
-            {search.channels.map((channel) => (
-              <Link className="flex items-center gap-3 rounded-md border border-line p-3 hover:border-accent" key={`c-${channel.id}`} to={`/channel/${channel.id}`} onClick={() => rememberBeforeNavigate(channel.id)}>
-                <ChannelLogo src={channel.logo_url} name={channel.display_name} size="sm" />
-                <div className="min-w-0">
-                  <div className="truncate font-semibold">{channel.display_name}</div>
-                  <div className="truncate text-sm text-ink/60">{channel.group_title}</div>
-                </div>
-              </Link>
-            ))}
-            {search.programs.map((program) => (
-              <Link className="rounded-md border border-line p-3 hover:border-accent" key={`p-${program.id}`} to={`/channel/${program.channel_id}`} onClick={() => rememberBeforeNavigate(program.channel_id)}>
-                <div className="truncate font-semibold">{program.title}</div>
-                <div className="truncate text-sm text-ink/60">{program.channel_name}</div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
       <section className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-md border border-line bg-panel shadow-soft">
-        <div ref={channelListRef} className="guide-channel-list scrollbar-none h-full overflow-y-auto overscroll-contain">
+        {searchActive ? (
+          <div className="scrollbar-none h-full overflow-y-auto overscroll-contain p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-bold">Search results</h2>
+              <span className="text-sm text-ink/55">{search ? `${searchResultCount} found` : "Searching..."}</span>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {!search && <div className="p-4 text-sm text-ink/60">Searching...</div>}
+              {search && searchResultCount === 0 && <div className="p-4 text-sm text-ink/60">No results found.</div>}
+              {search?.channels.map((channel) => (
+                <Link className="flex items-center gap-3 rounded-md border border-line p-3 hover:border-accent" key={`c-${channel.id}`} to={`/channel/${channel.id}`} onClick={() => rememberBeforeNavigate(channel.id)}>
+                  <ChannelLogo src={channel.logo_url} name={channel.display_name} size="sm" />
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold">{channel.display_name}</div>
+                    <div className="truncate text-sm text-ink/60">{channel.group_title}</div>
+                  </div>
+                </Link>
+              ))}
+              {search?.programs.map((program) => (
+                <Link className="rounded-md border border-line p-3 hover:border-accent" key={`p-${program.id}`} to={`/channel/${program.channel_id}`} onClick={() => rememberBeforeNavigate(program.channel_id)}>
+                  <div className="truncate font-semibold">{program.title}</div>
+                  <div className="truncate text-sm text-ink/60">{program.channel_name}</div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div ref={channelListRef} className="guide-channel-list scrollbar-none h-full overflow-y-auto overscroll-contain">
         <div ref={guideScrollRef} className="overflow-x-auto">
           <div className="grid min-w-[760px] gap-0">
             {loading && airing.length === 0 && !hasLoadedGuide && (
@@ -370,6 +391,7 @@ export function HomePage() {
           </div>
         </div>
         </div>
+        )}
       </section>
     </div>
   );
