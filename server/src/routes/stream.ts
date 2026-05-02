@@ -16,7 +16,8 @@ type HlsSession = {
   exited: boolean;
   exitCode: number | null;
   inputBytes: number;
-  inputAbort: AbortController;
+  inputAbort: AbortController | null;
+  inputMode: HlsInputMode;
   lastInputAt: number | null;
   lastAccess: number;
   mode: HlsMode;
@@ -34,6 +35,7 @@ type HlsSession = {
 };
 
 type HlsMode = "normal" | "videoOnly";
+type HlsInputMode = "ffmpeg-direct" | "node-pipe";
 
 const hlsSessions = new Map<number, HlsSession>();
 const hlsFallbackModes = new Map<number, { mode: HlsMode; streamUrl: string }>();
@@ -115,7 +117,7 @@ function stopHlsSession(channelId: number) {
   const session = hlsSessions.get(channelId);
   if (!session) return;
   hlsSessions.delete(channelId);
-  session.inputAbort.abort();
+  session.inputAbort?.abort();
   if (!session.process.killed) session.process.kill("SIGTERM");
 }
 
@@ -273,6 +275,30 @@ function ffmpegInputOptions(mode: HlsMode, logLevel = config.ffmpegLogLevel) {
   ];
 }
 
+function ffmpegDirectInputOptions(streamUrl: string, mode: HlsMode, logLevel = config.ffmpegLogLevel) {
+  const isHttpStream = /^https?:\/\//i.test(streamUrl);
+  return [
+    "-hide_banner",
+    "-nostdin",
+    "-nostats",
+    "-loglevel", logLevel,
+    ...(isHttpStream ? [
+      "-user_agent", config.ffmpegUserAgent,
+      "-reconnect", "1",
+      "-reconnect_streamed", "1",
+      "-reconnect_at_eof", "1",
+      "-reconnect_delay_max", "5",
+      "-rw_timeout", "15000000"
+    ] : []),
+    "-fflags", "+genpts+igndts+discardcorrupt",
+    ...(mode === "videoOnly" ? FFMPEG_VIDEO_ONLY_PROBE_OPTIONS : FFMPEG_NORMAL_PROBE_OPTIONS),
+    ...FFMPEG_TIMESTAMP_OPTIONS,
+    "-i", streamUrl,
+    "-dn",
+    "-sn"
+  ];
+}
+
 function hlsOutputOptions(mode: HlsMode) {
   const videoOptions = [
     "-map", "0:v:0?",
@@ -336,6 +362,7 @@ function buildTrace(session: HlsSession, files: Array<{ name: string; size: numb
     completedSegmentCount: completeSegments.length,
     events: session.events,
     inputBytes: session.inputBytes,
+    inputMode: session.inputMode,
     lastInputAgeMs: session.lastInputAt ? now - session.lastInputAt : null,
     latestSegment,
     latestSegmentAgeMs: latestSegment ? now - new Date(latestSegment.modified).getTime() : null,
@@ -371,7 +398,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   const playlistPath = path.join(dir, "index.m3u8");
   const segmentPattern = "segment_%05d.ts";
   const ffmpeg = spawn(config.ffmpegPath, [
-    ...ffmpegInputOptions(mode),
+    ...ffmpegDirectInputOptions(streamUrl, mode),
     ...hlsOutputOptions(mode),
     "-max_muxing_queue_size", "1024",
     "-avoid_negative_ts", "make_zero",
@@ -386,6 +413,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-hls_segment_filename", segmentPattern,
     "index.m3u8"
   ], { cwd: dir, stdio: ["pipe", "pipe", "pipe"] });
+  ffmpeg.stdin.end();
 
   const session: HlsSession = {
     dir,
@@ -393,7 +421,8 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     exited: false,
     exitCode: null,
     inputBytes: 0,
-    inputAbort: new AbortController(),
+    inputAbort: null,
+    inputMode: "ffmpeg-direct",
     lastInputAt: null,
     lastAccess: Date.now(),
     mode,
@@ -409,15 +438,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     stderr: mode === "videoOnly" ? "Malformed EAC3 audio was detected earlier; using video-only fallback for this channel.\n" : "",
     streamUrl
   };
-  recordSessionEvent(session, `Started FFmpeg HLS session in ${mode} mode.`);
-
-  session.inputAbort = pipeProviderStreamToFfmpeg(streamUrl, ffmpeg, (message) => {
-    session.stderr = appendStderr(session.stderr, message);
-    recordSessionEvent(session, message.trim());
-  }, (bytes) => {
-    session.inputBytes += bytes;
-    session.lastInputAt = Date.now();
-  });
+  recordSessionEvent(session, `Started FFmpeg HLS session in ${mode} mode using direct FFmpeg input.`);
 
   ffmpeg.stderr.setEncoding("utf8");
   ffmpeg.stderr.on("data", (chunk: string) => {
@@ -439,7 +460,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   ffmpeg.on("close", (code) => {
     session.exited = true;
     session.exitCode = code;
-    session.inputAbort.abort();
+    session.inputAbort?.abort();
     recordSessionEvent(session, `FFmpeg exited with code ${code ?? "unknown"}.`);
     if (Date.now() - session.lastAccess < HLS_IDLE_TIMEOUT_MS) {
       console.warn("FFmpeg HLS transcode exited", {
