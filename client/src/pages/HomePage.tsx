@@ -435,6 +435,10 @@ export function HomePage() {
             className="guide-channel-list scrollbar-none h-full overflow-auto overscroll-contain"
           >
           <div className="relative grid" style={{ width: CHANNEL_COLUMN_WIDTH + TIMELINE_WIDTH, gridTemplateColumns: guideTemplateColumns }}>
+            <div
+              className="pointer-events-none absolute inset-y-0 z-40 w-0.5 bg-accent shadow-[0_0_12px_rgba(77,166,255,0.7)]"
+              style={{ left: CHANNEL_COLUMN_WIDTH + currentOffset }}
+            />
             <div className="sticky left-0 top-0 z-30 flex h-14 items-center border-b border-r border-line bg-panel px-4">
               <div>
                 <div className="text-sm font-bold">Channels</div>
@@ -443,10 +447,9 @@ export function HomePage() {
             </div>
             <div className="sticky top-0 z-20 h-14 border-b border-line bg-panel">
               <div className="relative h-full" style={{ width: TIMELINE_WIDTH }}>
-                <div className="absolute bottom-2 text-xs font-bold text-accent" style={{ left: currentOffset }}>
+                <div className="pointer-events-none absolute bottom-2 z-50 -translate-x-1/2 rounded bg-panel px-1 text-xs font-bold text-accent" style={{ left: currentOffset }}>
                   Now
                 </div>
-                <div className="absolute inset-y-0 w-px bg-accent/80" style={{ left: currentOffset }} />
                 {timeMarkers.map((marker) => (
                   <div key={`${marker.label}-${marker.left}`} className="absolute inset-y-0 border-l border-line/70" style={{ left: marker.left }}>
                     <span className="absolute left-2 top-3 whitespace-nowrap text-xs font-semibold text-ink/65">{marker.label}</span>
@@ -477,7 +480,6 @@ export function HomePage() {
                     <FavoriteButton active={Boolean(item.favorite)} onClick={() => toggleFavorite(item).catch(() => undefined)} />
                   </div>
                   <div className="relative min-h-24 border-b border-line bg-mist/35" style={{ width: TIMELINE_WIDTH }}>
-                    <div className="pointer-events-none absolute inset-y-0 w-px bg-accent/80" style={{ left: currentOffset }} />
                     {timeMarkers.map((marker) => (
                       <div key={`${item.channel_id}-${marker.left}`} className="pointer-events-none absolute inset-y-0 border-l border-line/45" style={{ left: marker.left }} />
                     ))}
