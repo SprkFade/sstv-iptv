@@ -22,6 +22,12 @@ type HlsSession = {
 
 const hlsSessions = new Map<number, HlsSession>();
 const HLS_IDLE_TIMEOUT_MS = 30 * 1000;
+const FFMPEG_PROBE_OPTIONS = [
+  "-analyzeduration", "50000000",
+  "-probesize", "50000000",
+  "-max_probe_packets", "500000",
+  "-err_detect", "ignore_err"
+];
 
 function findChannel(channelId: number) {
   return getDb()
@@ -165,8 +171,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-hide_banner",
     "-loglevel", "warning",
     "-fflags", "+genpts+igndts+discardcorrupt",
-    "-analyzeduration", "10000000",
-    "-probesize", "10000000",
+    ...FFMPEG_PROBE_OPTIONS,
     "-re",
     "-i", "pipe:0",
     "-map", "0:v:0?",
@@ -357,8 +362,7 @@ streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
     "-hide_banner",
     "-loglevel", "warning",
     "-fflags", "+genpts+discardcorrupt",
-    "-analyzeduration", "10000000",
-    "-probesize", "10000000",
+    ...FFMPEG_PROBE_OPTIONS,
     "-i", "pipe:0",
     "-map", "0:v:0?",
     "-map", "0:a:0?",
