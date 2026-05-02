@@ -85,6 +85,7 @@ const hlsSessions = new Map<number, HlsSession>();
 const hlsFallbackModes = new Map<number, { mode: HlsMode; streamUrl: string }>();
 const HLS_IDLE_TIMEOUT_MS = 30 * 1000;
 const HLS_CLIENT_ACTIVE_MS = 45 * 1000;
+const HLS_CLIENT_STARTUP_GRACE_MS = 15 * 1000;
 const FFMPEG_NORMAL_PROBE_OPTIONS = [
   "-analyzeduration", "8000000",
   "-probesize", "8000000",
@@ -229,6 +230,12 @@ function pruneSessionClients(session: HlsSession, now = Date.now()) {
   for (const [key, client] of session.clients) {
     if (now - client.lastSeen > HLS_CLIENT_ACTIVE_MS) session.clients.delete(key);
   }
+}
+
+function isActivePlaybackClient(session: HlsSession, client: HlsClientStats, now = Date.now()) {
+  if (client.lastSegmentAt && now - client.lastSegmentAt <= HLS_CLIENT_ACTIVE_MS) return true;
+  const sessionStarting = now - session.startedAt <= HLS_CLIENT_STARTUP_GRACE_MS && session.requestStats.segment === 0;
+  return sessionStarting && now - client.lastSeen <= HLS_CLIENT_STARTUP_GRACE_MS;
 }
 
 function recordHlsClientRequest(
@@ -635,7 +642,7 @@ export function getActiveStreamMonitor() {
       const channel = channelById.get(channelId);
       const latestSegmentAgeMs = latestCompleteSegmentAgeMs(session);
       const clients = [...session.clients.values()]
-        .filter((client) => now - client.lastSeen <= HLS_CLIENT_ACTIVE_MS)
+        .filter((client) => isActivePlaybackClient(session, client, now))
         .sort((a, b) => b.lastSeen - a.lastSeen)
         .map((client) => ({
           id: client.id,
