@@ -117,24 +117,28 @@ select:not([multiple]) {
 }
 
 .guide-program-label {
-  --guide-program-label-width: min(
-    var(--guide-label-max-width, 42rem),
-    max(28px, calc(var(--program-width, 0px) - 16px))
-  );
   left: clamp(
     8px,
     calc(var(--guide-scroll-left, 0px) + 12px - var(--program-left, 0px)),
-    max(8px, calc(var(--program-width, 0px) - var(--guide-program-label-width) - 8px))
+    max(8px, calc(var(--program-width, 0px) - 32px))
   );
-  width: var(--guide-program-label-width);
-  max-width: var(--guide-program-label-width);
+  width: min(
+    var(--guide-label-max-width, 42rem),
+    max(28px, calc(var(--program-width, 0px) - 16px))
+  );
+  max-width: max(28px, calc(var(--program-width, 0px) - 16px));
 }
 
 .guide-program-label-active {
   left: clamp(
     8px,
     calc(max(calc(var(--guide-scroll-left, 0px) + 12px), var(--program-now-anchor, 0px)) - var(--program-left, 0px)),
-    max(8px, calc(var(--program-width, 0px) - var(--guide-program-label-width) - 8px))
+    max(8px, calc(var(--program-width, 0px) - 23rem))
+  );
+  width: min(
+    var(--guide-label-max-width, 42rem),
+    22rem,
+    max(28px, calc(var(--program-width, 0px) - 16px))
   );
 }
 
