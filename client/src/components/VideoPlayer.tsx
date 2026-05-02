@@ -37,12 +37,56 @@ function formatRanges(ranges: TimeRanges) {
 }
 
 export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps) {
+  const mobile = typeof navigator !== "undefined" && isMobile();
+  if (mobile) return <MobileNativeVideoPlayer channelId={channelId} src={src} title={title} />;
+  return <ManagedVideoPlayer channelId={channelId} src={src} title={title} onTrace={onTrace} />;
+}
+
+function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
+  const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
+  const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
+  const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8`, [channelId]);
+  const transcodeStatusSrc = useMemo(() => `/api/stream/${channelId}/hls/status`, [channelId]);
+
+  return (
+    <div className="overflow-hidden rounded-md border border-line bg-black">
+      <video
+        className="aspect-video w-full bg-black"
+        controls
+        playsInline
+        preload="metadata"
+        src={transcodeHlsSrc}
+        title={title}
+      />
+      <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-black p-3 text-xs text-white/70">
+        <span className="font-semibold text-white">Native mobile playback</span>
+        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={transcodeHlsSrc} target="_blank" rel="noreferrer">
+          HLS <ExternalLink size={14} />
+        </a>
+        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={transcodeStatusSrc} target="_blank" rel="noreferrer">
+          Status <ExternalLink size={14} />
+        </a>
+        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={transcodeSrc} target="_blank" rel="noreferrer">
+          TS <ExternalLink size={14} />
+        </a>
+        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={proxySrc} target="_blank" rel="noreferrer">
+          Proxy <ExternalLink size={14} />
+        </a>
+        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={src} target="_blank" rel="noreferrer">
+          Direct <ExternalLink size={14} />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function ManagedVideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("Preparing stream...");
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
-  const mobile = typeof navigator !== "undefined" && isMobile();
+  const mobile = false;
   const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
   const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
   const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8`, [channelId]);
@@ -104,6 +148,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       }
     };
     const requestWakeLock = async () => {
+      if (mobile) return;
       if (disposed || video.paused || video.ended || document.visibilityState !== "visible") return;
       if (wakeLock && !wakeLock.released) return;
       const api = (navigator as NavigatorWithWakeLock).wakeLock;
@@ -121,6 +166,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       }
     };
     const syncWakeLock = () => {
+      if (mobile) return;
       if (!video.paused && !video.ended && document.visibilityState === "visible") {
         void requestWakeLock();
       } else {
@@ -236,6 +282,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       }
     };
     const scheduleStallRecovery = () => {
+      if (mobile) return;
       trace(`video stalled/waiting; recovery scheduled (${playerState()})`);
       clearStallTimer();
       stallTimer = window.setTimeout(recoverFromStall, 8000);
@@ -245,6 +292,10 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     };
     const onPlaying = () => {
       clearStallTimer();
+      if (mobile) {
+        setPlaybackBlocked(false);
+        return;
+      }
       void requestWakeLock();
       trace(`video playing (${playerState()})`);
       setPlaybackBlocked(false);
@@ -257,7 +308,9 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       }
       clearStallTimer();
     };
-    const onCanPlay = () => trace(`video canplay (${playerState()})`);
+    const onCanPlay = () => {
+      if (!mobile) trace(`video canplay (${playerState()})`);
+    };
     const onVisibilityChange = () => syncWakeLock();
     video.addEventListener("error", onVideoError);
     video.addEventListener("playing", onPlaying);
