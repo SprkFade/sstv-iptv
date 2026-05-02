@@ -184,6 +184,11 @@ export function StreamsPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-bold">{client.username}</span>
                             <span className="rounded-md border border-line px-2 py-0.5 text-xs text-ink/60">{client.role}</span>
+                            {client.source === "external" && (
+                              <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent">
+                                {client.externalProfileName ?? "External"}
+                              </span>
+                            )}
                             <span className="rounded-md border border-line px-2 py-0.5 text-xs text-ink/60">{client.lastRequestKind}</span>
                           </div>
                           <p className="mt-1 truncate text-ink/60">{client.ip} · {compactUserAgent(client.userAgent)}</p>

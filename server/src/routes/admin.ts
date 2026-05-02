@@ -5,6 +5,7 @@ import { getRefreshProgress, startRefreshGuide } from "../ingest/refresh.js";
 import { plexAdminStatus } from "../services/plex.js";
 import { applyDefaultGroupSort, listChannelGroups, listGroupPrefixes, recalculateChannelNumbers, saveDefaultGroupPrefixOrder } from "../services/channelGroups.js";
 import { getActiveStreamMonitor } from "./stream.js";
+import { listExternalProfiles, regenerateExternalToken, regenerateExternalXcPassword, updateExternalProfile } from "../services/externalAccess.js";
 
 export const adminRouter = Router();
 
@@ -22,6 +23,9 @@ adminRouter.get("/settings", async (_req, res, next) => {
       ffmpegRwTimeoutSeconds: Number(setting("ffmpeg_rw_timeout_seconds", "15")),
       ffmpegStaleRestartSeconds: Number(setting("ffmpeg_stale_restart_seconds", "30")),
       ffmpegHlsDvrWindowMinutes: Number(setting("ffmpeg_hls_dvr_window_minutes", "20")),
+      externalInternalBaseUrl: setting("external_internal_base_url", "http://sstv-iptv:3025"),
+      externalPublicBaseUrl: setting("external_public_base_url"),
+      externalProfiles: listExternalProfiles(),
       plex: await plexAdminStatus()
     });
   } catch (error) {
@@ -40,7 +44,9 @@ const settingsSchema = z.object({
   ffmpegReconnectDelayMax: z.number().int().min(1).max(60).optional().default(5),
   ffmpegRwTimeoutSeconds: z.number().int().min(5).max(120).optional().default(15),
   ffmpegStaleRestartSeconds: z.number().int().min(0).max(300).optional().default(30),
-  ffmpegHlsDvrWindowMinutes: z.number().int().min(0).max(60).optional().default(20)
+  ffmpegHlsDvrWindowMinutes: z.number().int().min(0).max(60).optional().default(20),
+  externalInternalBaseUrl: z.string().url().or(z.literal("")).optional().default(""),
+  externalPublicBaseUrl: z.string().url().or(z.literal("")).optional().default("")
 });
 
 const groupUpdateSchema = z.object({
@@ -56,6 +62,12 @@ const groupPrefixOrderSchema = z.object({
   prefixes: z.array(z.string().trim().min(1).max(24)).min(1)
 });
 
+const externalProfileUpdateSchema = z.object({
+  enabled: z.boolean().optional(),
+  outputMode: z.enum(["hls", "mpegts"]).optional(),
+  xcUsername: z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9_.-]+$/).optional()
+});
+
 adminRouter.put("/settings", (req, res) => {
   const body = settingsSchema.parse(req.body);
   setSetting("xc_base_url", body.xcBaseUrl);
@@ -69,6 +81,8 @@ adminRouter.put("/settings", (req, res) => {
   setSetting("ffmpeg_rw_timeout_seconds", String(body.ffmpegRwTimeoutSeconds));
   setSetting("ffmpeg_stale_restart_seconds", String(body.ffmpegStaleRestartSeconds));
   setSetting("ffmpeg_hls_dvr_window_minutes", String(body.ffmpegHlsDvrWindowMinutes));
+  setSetting("external_internal_base_url", body.externalInternalBaseUrl);
+  setSetting("external_public_base_url", body.externalPublicBaseUrl);
   res.json({ ok: true });
 });
 
@@ -110,6 +124,30 @@ adminRouter.get("/users", (_req, res) => {
 
 adminRouter.get("/streams", (_req, res) => {
   res.json(getActiveStreamMonitor());
+});
+
+adminRouter.get("/external-profiles", (_req, res) => {
+  res.json({ profiles: listExternalProfiles() });
+});
+
+adminRouter.put("/external-profiles/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const body = externalProfileUpdateSchema.parse(req.body);
+  const profile = updateExternalProfile(id, body);
+  if (!profile) return res.status(404).json({ error: "External profile not found" });
+  res.json({ profile, profiles: listExternalProfiles() });
+});
+
+adminRouter.post("/external-profiles/:id/regenerate-token", (req, res) => {
+  const profile = regenerateExternalToken(Number(req.params.id));
+  if (!profile) return res.status(404).json({ error: "External profile not found" });
+  res.json({ profile, profiles: listExternalProfiles() });
+});
+
+adminRouter.post("/external-profiles/:id/regenerate-password", (req, res) => {
+  const profile = regenerateExternalXcPassword(Number(req.params.id));
+  if (!profile) return res.status(404).json({ error: "External profile not found" });
+  res.json({ profile, profiles: listExternalProfiles() });
 });
 
 adminRouter.get("/groups", (_req, res) => {

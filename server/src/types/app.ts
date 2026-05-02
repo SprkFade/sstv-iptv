@@ -13,6 +13,19 @@ export interface AuthUser {
 
 export interface AuthedRequest extends Request {
   user?: AuthUser;
+  externalProfile?: ExternalProfile;
+}
+
+export interface ExternalProfile {
+  id: number;
+  name: string;
+  enabled: number;
+  token: string;
+  xc_username: string;
+  xc_password: string;
+  output_mode: "hls" | "mpegts";
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ParsedM3uChannel {

@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { randomBytes } from "node:crypto";
 import { config, ensureRuntimeDirs } from "../config.js";
 import { groupNameSql } from "../services/channelGroups.js";
 
@@ -98,6 +99,18 @@ export function migrate() {
       error TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS external_profiles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      token TEXT NOT NULL UNIQUE,
+      xc_username TEXT NOT NULL UNIQUE,
+      xc_password TEXT NOT NULL,
+      output_mode TEXT NOT NULL DEFAULT 'hls' CHECK(output_mode IN ('hls', 'mpegts')),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_channels_enabled_group ON channels(enabled, group_title);
     CREATE INDEX IF NOT EXISTS idx_channels_tvg_id ON channels(tvg_id);
     CREATE INDEX IF NOT EXISTS idx_channels_stream_url ON channels(stream_url);
@@ -108,6 +121,8 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_programs_title ON programs(title);
     CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_external_profiles_token ON external_profiles(token);
+    CREATE INDEX IF NOT EXISTS idx_external_profiles_xc ON external_profiles(xc_username, xc_password);
   `);
 
   addColumnIfMissing(database, "channels", "channel_number", "INTEGER");
@@ -118,6 +133,7 @@ export function migrate() {
   backfillExistingChannelGroups(database);
 
   seedSettings();
+  seedExternalProfiles();
   closeInterruptedRefreshRuns();
 }
 
@@ -176,7 +192,22 @@ function seedSettings() {
   insert.run("ffmpeg_rw_timeout_seconds", String(config.ffmpegRwTimeoutSeconds));
   insert.run("ffmpeg_stale_restart_seconds", String(config.ffmpegStaleRestartSeconds));
   insert.run("ffmpeg_hls_dvr_window_minutes", String(config.ffmpegHlsDvrWindowMinutes));
+  insert.run("external_internal_base_url", "http://sstv-iptv:3025");
+  insert.run("external_public_base_url", "");
   insert.run("setup_complete", "false");
+}
+
+function randomCredential(bytes = 18) {
+  return randomBytes(bytes).toString("base64url");
+}
+
+function seedExternalProfiles() {
+  const insert = getDb().prepare(
+    `INSERT OR IGNORE INTO external_profiles (name, enabled, token, xc_username, xc_password, output_mode)
+     VALUES (?, 1, ?, ?, ?, 'hls')`
+  );
+  insert.run("Emby", randomCredential(), "emby", randomCredential(12));
+  insert.run("Others", randomCredential(), "others", randomCredential(12));
 }
 
 export function setting(key: string, fallback = "") {

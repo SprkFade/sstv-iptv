@@ -13,6 +13,7 @@ import { adminRouter } from "./routes/admin.js";
 import { dataRouter } from "./routes/data.js";
 import { favoritesRouter } from "./routes/favorites.js";
 import { streamRouter } from "./routes/stream.js";
+import { externalRouter, externalTokenStreamAuth, externalXcStreamAuth } from "./routes/external.js";
 
 export function createApp() {
   const app = express();
@@ -39,6 +40,9 @@ export function createApp() {
   app.use("/api/stream", requireAuth, streamRouter);
   app.use("/api", requireAuth, dataRouter);
   app.use("/api/favorites", requireAuth, favoritesRouter);
+  app.use("/external/live/:token", externalTokenStreamAuth, streamRouter);
+  app.use("/live/:username/:password", externalXcStreamAuth, streamRouter);
+  app.use(externalRouter);
 
   app.use(express.static(config.clientDistPath, {
     maxAge: config.nodeEnv === "production" ? "1h" : 0,

@@ -138,6 +138,8 @@ export interface StreamQualityPair {
 export interface StreamMonitorClient {
   id: string;
   bytesServed: number;
+  externalProfileId: number | null;
+  externalProfileName: string | null;
   firstSeen: string;
   ip: string;
   lastPlaylistAt: string | null;
@@ -149,6 +151,7 @@ export interface StreamMonitorClient {
   playlistRequests: number;
   role: string;
   segmentRequests: number;
+  source: "browser" | "external";
   userAgent: string;
   userId: number | null;
   username: string;
@@ -194,6 +197,18 @@ export interface ChannelGroup {
   channel_count: number;
   first_channel_number: number | null;
   last_channel_number: number | null;
+}
+
+export interface ExternalProfile {
+  id: number;
+  name: string;
+  enabled: 0 | 1;
+  token: string;
+  xc_username: string;
+  xc_password: string;
+  output_mode: "hls" | "mpegts";
+  created_at: string;
+  updated_at: string;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -275,6 +290,9 @@ export const api = {
     ffmpegReconnectDelayMax: number;
     ffmpegRwTimeoutSeconds: number;
     ffmpegStaleRestartSeconds: number;
+    externalInternalBaseUrl: string;
+    externalPublicBaseUrl: string;
+    externalProfiles: ExternalProfile[];
     plex: { configured: boolean; serverReachable: boolean };
   }>("/api/admin/settings"),
   saveSettings: (body: {
@@ -289,6 +307,8 @@ export const api = {
     ffmpegReconnectDelayMax: number;
     ffmpegRwTimeoutSeconds: number;
     ffmpegStaleRestartSeconds: number;
+    externalInternalBaseUrl: string;
+    externalPublicBaseUrl: string;
   }) =>
     request<{ ok: true }>("/api/admin/settings", { method: "PUT", body: JSON.stringify(body) }),
   refresh: () => request<{ started: boolean; progress: RefreshProgress }>("/api/admin/refresh", { method: "POST" }),
@@ -296,6 +316,13 @@ export const api = {
   refreshRuns: () => request<{ runs: Array<Record<string, string | number | null>> }>("/api/admin/refresh-runs"),
   users: () => request<{ users: Array<Record<string, string | number | null>> }>("/api/admin/users"),
   streams: () => request<StreamMonitor>("/api/admin/streams"),
+  externalProfiles: () => request<{ profiles: ExternalProfile[] }>("/api/admin/external-profiles"),
+  updateExternalProfile: (id: number, body: { enabled?: boolean; outputMode?: "hls" | "mpegts"; xcUsername?: string }) =>
+    request<{ profile: ExternalProfile; profiles: ExternalProfile[] }>(`/api/admin/external-profiles/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  regenerateExternalToken: (id: number) =>
+    request<{ profile: ExternalProfile; profiles: ExternalProfile[] }>(`/api/admin/external-profiles/${id}/regenerate-token`, { method: "POST" }),
+  regenerateExternalPassword: (id: number) =>
+    request<{ profile: ExternalProfile; profiles: ExternalProfile[] }>(`/api/admin/external-profiles/${id}/regenerate-password`, { method: "POST" }),
   groups: () => request<{ groups: ChannelGroup[] }>("/api/admin/groups"),
   updateGroup: (id: number, body: { enabled?: boolean; useChannelNameForEpg?: boolean }) =>
     request<{ groups: ChannelGroup[] }>(`/api/admin/groups/${id}`, { method: "PUT", body: JSON.stringify(body) }),

@@ -33,6 +33,9 @@ function shutdown(reason: string, exitCode = 0) {
 
   server.close((error) => {
     if (error) {
+      if ((error as NodeJS.ErrnoException).code === "ERR_SERVER_NOT_RUNNING") {
+        process.exit(exitCode);
+      }
       console.error("HTTP server close failed during shutdown", error);
       process.exit(1);
     }

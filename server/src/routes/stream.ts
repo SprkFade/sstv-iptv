@@ -59,6 +59,8 @@ type StreamQuality = {
 type HlsClientStats = {
   id: string;
   bytesServed: number;
+  externalProfileId: number | null;
+  externalProfileName: string | null;
   firstSeen: number;
   ip: string;
   lastPlaylistAt: number | null;
@@ -69,6 +71,7 @@ type HlsClientStats = {
   playlistRequests: number;
   role: string;
   segmentRequests: number;
+  source: "browser" | "external";
   userAgent: string;
   userId: number | null;
   username: string;
@@ -255,7 +258,8 @@ function hlsClientKey(req: AuthedRequest) {
   const ip = clientIp(req);
   const userAgent = req.headers["user-agent"]?.toString() || "unknown";
   const userId = req.user?.id ?? null;
-  return `${userId ?? "anon"}|${ip}|${userAgent}`;
+  const externalProfileId = req.externalProfile?.id ?? null;
+  return `${externalProfileId ? `external-${externalProfileId}` : userId ?? "anon"}|${ip}|${userAgent}`;
 }
 
 function pruneSessionClients(session: HlsSession, now = Date.now()) {
@@ -293,12 +297,15 @@ function recordHlsClientRequest(
   const ip = clientIp(req);
   const userAgent = req.headers["user-agent"]?.toString() || "unknown";
   const userId = req.user?.id ?? null;
-  const username = req.user?.username ?? "unknown";
+  const externalProfile = req.externalProfile;
+  const username = externalProfile?.name ?? req.user?.username ?? "unknown";
   const key = hlsClientKey(req);
   const existing = session.clients.get(key);
   const client: HlsClientStats = existing ?? {
     id: shortClientId(key),
     bytesServed: 0,
+    externalProfileId: externalProfile?.id ?? null,
+    externalProfileName: externalProfile?.name ?? null,
     firstSeen: now,
     ip,
     lastPlaylistAt: null,
@@ -307,8 +314,9 @@ function recordHlsClientRequest(
     lastSegmentAt: null,
     lastSegmentName: "",
     playlistRequests: 0,
-    role: req.user?.role ?? "unknown",
+    role: externalProfile ? "external" : req.user?.role ?? "unknown",
     segmentRequests: 0,
+    source: externalProfile ? "external" : "browser",
     userAgent,
     userId,
     username
@@ -711,6 +719,8 @@ export function getActiveStreamMonitor() {
         .map((client) => ({
           id: client.id,
           bytesServed: client.bytesServed,
+          externalProfileId: client.externalProfileId,
+          externalProfileName: client.externalProfileName,
           firstSeen: new Date(client.firstSeen).toISOString(),
           ip: client.ip,
           lastPlaylistAt: client.lastPlaylistAt ? new Date(client.lastPlaylistAt).toISOString() : null,
@@ -722,6 +732,7 @@ export function getActiveStreamMonitor() {
           playlistRequests: client.playlistRequests,
           role: client.role,
           segmentRequests: client.segmentRequests,
+          source: client.source,
           userAgent: client.userAgent,
           userId: client.userId,
           username: client.username

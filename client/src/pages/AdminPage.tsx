@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Activity, ChevronDown, Database, RefreshCw, Server, Users } from "lucide-react";
-import { api, type RefreshProgress } from "../api/client";
+import { Activity, ChevronDown, Copy, Database, KeyRound, RefreshCw, Server, Users } from "lucide-react";
+import { api, type ExternalProfile, type RefreshProgress } from "../api/client";
 
 type Settings = Awaited<ReturnType<typeof api.settings>>;
 
@@ -27,6 +27,22 @@ function formatRefreshTimestamp(value: string | number | null | undefined) {
   const minutes = String(date.getMinutes()).padStart(2, "0");
   const period = hours >= 12 ? "PM" : "AM";
   return `${month}/${day}/${year} ${hour12}:${minutes} ${period}`;
+}
+
+function trimBaseUrl(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function externalUrls(baseUrl: string, profile: ExternalProfile) {
+  const base = trimBaseUrl(baseUrl);
+  if (!base) return null;
+  return {
+    m3u: `${base}/external/m3u?token=${encodeURIComponent(profile.token)}`,
+    xmltv: `${base}/external/xmltv?token=${encodeURIComponent(profile.token)}`,
+    xcServer: base,
+    xcM3u: `${base}/get.php?username=${encodeURIComponent(profile.xc_username)}&password=${encodeURIComponent(profile.xc_password)}&type=m3u_plus&output=hls`,
+    xcXmltv: `${base}/xmltv.php?username=${encodeURIComponent(profile.xc_username)}&password=${encodeURIComponent(profile.xc_password)}`
+  };
 }
 
 export function AdminPage() {
@@ -104,6 +120,13 @@ export function AdminPage() {
       </section>
     );
   }
+
+  const copyText = async (label: string, value: string) => {
+    await navigator.clipboard.writeText(value);
+    setMessage(`${label} copied.`);
+  };
+
+  const setExternalProfiles = (profiles: ExternalProfile[]) => setSettings({ ...settings, externalProfiles: profiles });
 
   return (
     <div className="grid min-w-0 gap-4">
@@ -224,6 +247,107 @@ export function AdminPage() {
                   onChange={(event) => setSettings({ ...settings, ffmpegRwTimeoutSeconds: Number(event.target.value) })}
                 />
               </label>
+            </div>
+          </div>
+          <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-line bg-mist p-3">
+            <h2 className="text-base font-bold">External access</h2>
+            <p className="mt-1 text-sm text-ink/60">M3U, XMLTV, and XC-compatible HLS access for Emby and IPTV clients.</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="grid gap-1 text-sm font-medium">
+                Internal Docker base URL
+                <input
+                  className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"
+                  value={settings.externalInternalBaseUrl}
+                  onChange={(event) => setSettings({ ...settings, externalInternalBaseUrl: event.target.value })}
+                  placeholder="http://sstv-iptv:3025"
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-medium">
+                Public base URL
+                <input
+                  className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"
+                  value={settings.externalPublicBaseUrl}
+                  onChange={(event) => setSettings({ ...settings, externalPublicBaseUrl: event.target.value })}
+                  placeholder="https://tv.example.com"
+                />
+              </label>
+            </div>
+            <div className="mt-3 grid gap-3 xl:grid-cols-2">
+              {settings.externalProfiles.map((profile) => {
+                const internal = externalUrls(settings.externalInternalBaseUrl, profile);
+                const external = externalUrls(settings.externalPublicBaseUrl || settings.externalInternalBaseUrl, profile);
+                return (
+                  <article key={profile.id} className="rounded-md border border-line bg-panel p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-bold">{profile.name}</h3>
+                        <p className="text-sm text-ink/60">{profile.name === "Emby" ? "Use internal URLs for Docker-to-Docker setup." : "Use public URLs for phones, tablets, and IPTV apps."}</p>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-sm font-semibold">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(profile.enabled)}
+                          onChange={async (event) => {
+                            const response = await api.updateExternalProfile(profile.id, { enabled: event.target.checked });
+                            setExternalProfiles(response.profiles);
+                          }}
+                        />
+                        Enabled
+                      </label>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-sm">
+                      <label className="grid gap-1 font-medium">
+                        XC username
+                        <input
+                          className="min-h-10 rounded-md border border-line px-3"
+                          value={profile.xc_username}
+                          onChange={(event) => setExternalProfiles(settings.externalProfiles.map((item) => item.id === profile.id ? { ...item, xc_username: event.target.value } : item))}
+                          onBlur={async (event) => {
+                            const response = await api.updateExternalProfile(profile.id, { xcUsername: event.target.value });
+                            setExternalProfiles(response.profiles);
+                          }}
+                        />
+                      </label>
+                      <div className="rounded-md border border-line bg-mist p-2">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-ink/50">XC password</div>
+                        <div className="mt-1 break-all font-mono text-xs">{profile.xc_password}</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-sm">
+                      {internal && (
+                        <div className="rounded-md border border-line p-2">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">Internal URLs</div>
+                          <div className="flex flex-wrap gap-2">
+                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} internal M3U`, internal.m3u)}><Copy size={15} /> M3U</button>
+                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} internal XMLTV`, internal.xmltv)}><Copy size={15} /> XMLTV</button>
+                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} XC server`, internal.xcServer)}><Copy size={15} /> XC server</button>
+                          </div>
+                        </div>
+                      )}
+                      {external && (
+                        <div className="rounded-md border border-line p-2">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">Public URLs</div>
+                          <div className="flex flex-wrap gap-2">
+                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} public M3U`, external.m3u)}><Copy size={15} /> M3U</button>
+                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} public XMLTV`, external.xmltv)}><Copy size={15} /> XMLTV</button>
+                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} XC M3U`, external.xcM3u)}><Copy size={15} /> XC M3U</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 text-sm font-semibold" onClick={async () => {
+                        const response = await api.regenerateExternalToken(profile.id);
+                        setExternalProfiles(response.profiles);
+                      }}><KeyRound size={15} /> Regenerate token</button>
+                      <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 text-sm font-semibold" onClick={async () => {
+                        const response = await api.regenerateExternalPassword(profile.id);
+                        setExternalProfiles(response.profiles);
+                      }}><KeyRound size={15} /> Reset XC password</button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
