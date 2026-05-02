@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Filter, Search, Star, X } from "lucide-react";
 import { api, type Airing, type Program } from "../api/client";
@@ -26,6 +26,13 @@ type GuideState = {
   loadedCount: number;
   selectedChannelId?: number;
   updatedAt: number;
+};
+
+type ProgramHoverCard = {
+  channel: Airing;
+  program: Program;
+  x: number;
+  y: number;
 };
 
 function readGuideState(): Partial<GuideState> {
@@ -96,6 +103,14 @@ function currentProgram(item: Airing) {
   ));
 }
 
+function programDurationLabel(program: Program) {
+  const minutes = Math.max(0, Math.round(minutesBetween(new Date(program.start_time), new Date(program.end_time))));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+}
+
 function compactGuidePreferred() {
   if (typeof window === "undefined") return false;
   return window.matchMedia?.("(max-width: 900px), (pointer: coarse)").matches ?? false;
@@ -120,10 +135,13 @@ export function HomePage() {
   const [hasMore, setHasMore] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [compactGuide, setCompactGuide] = useState(() => compactGuidePreferred());
+  const [hoverCard, setHoverCard] = useState<ProgramHoverCard | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const guideScrollRef = useRef<HTMLDivElement | null>(null);
   const filterScrollRef = useRef<HTMLDivElement | null>(null);
   const channelListRef = useRef<HTMLDivElement | null>(null);
+  const hoverTimerRef = useRef<number | null>(null);
+  const pendingHoverRef = useRef<ProgramHoverCard | null>(null);
   const initialLoadRef = useRef(true);
   const restoredScrollRef = useRef(false);
   const selectedChannelIdRef = useRef(restoredState.current.selectedChannelId);
@@ -158,6 +176,10 @@ export function HomePage() {
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => () => {
+    if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current);
   }, []);
 
   const saveGuideState = useCallback((overrides: Partial<GuideState> = {}) => {
@@ -271,6 +293,7 @@ export function HomePage() {
     const channelList = channelListRef.current;
     const updateGuideScrollMetrics = () => {
       syncGuideScrollMetrics(guideScroll);
+      setHoverCard(null);
     };
     if (guideScroll && guideScroll !== channelList) guideScroll.addEventListener("scroll", remember, { passive: true });
     channelList?.addEventListener("scroll", remember, { passive: true });
@@ -367,12 +390,42 @@ export function HomePage() {
     });
   };
 
+  const clearProgramHoverCard = () => {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    pendingHoverRef.current = null;
+    setHoverCard(null);
+  };
+
+  const scheduleProgramHoverCard = (channel: Airing, program: Program, event: ReactPointerEvent) => {
+    if (compactGuide || event.pointerType !== "mouse") return;
+    if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current);
+    pendingHoverRef.current = { channel, program, x: event.clientX, y: event.clientY };
+    hoverTimerRef.current = window.setTimeout(() => {
+      hoverTimerRef.current = null;
+      if (pendingHoverRef.current) setHoverCard(pendingHoverRef.current);
+    }, 900);
+  };
+
+  const moveProgramHoverCard = (event: ReactPointerEvent) => {
+    if (compactGuide || event.pointerType !== "mouse") return;
+    if (pendingHoverRef.current) {
+      pendingHoverRef.current = { ...pendingHoverRef.current, x: event.clientX, y: event.clientY };
+    }
+    setHoverCard((current) => current ? { ...current, x: event.clientX, y: event.clientY } : current);
+  };
+
   const searchActive = query.trim().length > 0;
   const searchResultCount = (search?.channels.length ?? 0) + (search?.programs.length ?? 0);
   const timeMarkers = buildTimeMarkers(guideStartRef.current);
   const currentOffset = Math.max(0, Math.min(TIMELINE_WIDTH, minutesBetween(guideStartRef.current, now) * MINUTE_WIDTH));
   const channelColumnWidth = compactGuide ? COMPACT_CHANNEL_COLUMN_WIDTH : CHANNEL_COLUMN_WIDTH;
   const guideTemplateColumns = `${channelColumnWidth}px ${TIMELINE_WIDTH}px`;
+  const tooltipWidth = 360;
+  const tooltipLeft = hoverCard ? Math.min(Math.max(16, hoverCard.x + 18), Math.max(16, window.innerWidth - tooltipWidth - 16)) : 0;
+  const tooltipTop = hoverCard ? Math.min(Math.max(16, hoverCard.y + 18), Math.max(16, window.innerHeight - 240)) : 0;
 
   const scrollGuideToNow = () => {
     const scroller = guideScrollRef.current;
@@ -564,9 +617,13 @@ export function HomePage() {
                           key={program.id}
                           to={`/channel/${item.channel_id}`}
                           onClick={() => rememberBeforeNavigate(item.channel_id)}
+                          onPointerEnter={(event) => scheduleProgramHoverCard(item, program, event)}
+                          onPointerMove={moveProgramHoverCard}
+                          onPointerLeave={clearProgramHoverCard}
+                          onPointerCancel={clearProgramHoverCard}
                           className={`absolute inset-y-0 min-w-0 overflow-hidden border-r border-line/45 transition hover:bg-accent/15 ${active ? "bg-accent/20" : "bg-panel/70"}`}
                           style={{ left: layout.left, width: Math.max(0, layout.width), "--program-left": `${layout.left}px`, "--program-width": `${layout.width}px` } as CSSProperties}
-                          title={`${program.title} ${formatGuideTime(new Date(program.start_time))} - ${formatGuideTime(new Date(program.end_time))}`}
+                          aria-label={`${program.title} ${formatGuideTime(new Date(program.start_time))} - ${formatGuideTime(new Date(program.end_time))}`}
                         >
                           <div
                             className={`guide-program-label absolute top-1/2 min-w-0 -translate-y-1/2 px-1 ${active ? "guide-program-label-active" : ""}`}
@@ -593,6 +650,34 @@ export function HomePage() {
         </div>
         )}
       </section>
+      {hoverCard && !compactGuide && (
+        <div
+          className="pointer-events-none fixed z-[1000] w-[min(22.5rem,calc(100vw-2rem))] rounded-md border border-line bg-panel/95 p-4 text-ink shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur"
+          style={{ left: tooltipLeft, top: tooltipTop }}
+        >
+          <div className="flex items-start gap-3">
+            <ChannelLogo src={hoverCard.channel.logo_url} name={hoverCard.channel.display_name} size="sm" />
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wide text-accent">
+                CH {hoverCard.channel.channel_number ?? hoverCard.channel.sort_order + 1} · {hoverCard.channel.display_name}
+              </div>
+              <div className="mt-1 text-lg font-bold leading-tight">{hoverCard.program.title}</div>
+              {hoverCard.program.subtitle && <div className="mt-1 text-sm font-semibold text-ink/75">{hoverCard.program.subtitle}</div>}
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-ink/70">
+            <span className="rounded border border-line bg-mist px-2 py-1">
+              {formatGuideTime(new Date(hoverCard.program.start_time))} - {formatGuideTime(new Date(hoverCard.program.end_time))}
+            </span>
+            <span className="rounded border border-line bg-mist px-2 py-1">{programDurationLabel(hoverCard.program)}</span>
+            {hoverCard.program.category && <span className="rounded border border-line bg-mist px-2 py-1">{hoverCard.program.category}</span>}
+          </div>
+          {hoverCard.program.description && (
+            <p className="mt-3 line-clamp-5 text-sm leading-relaxed text-ink/70">{hoverCard.program.description}</p>
+          )}
+          <div className="mt-3 text-xs text-ink/45">{hoverCard.channel.group_title}</div>
+        </div>
+      )}
     </div>
   );
 }
