@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 
 export const UNGROUPED_NAME = "Ungrouped";
+const DEFAULT_PREFIX_ORDER = ["US", "CA", "UK", "AU", "NZ"];
 
 export function groupNameSql(alias = "channels") {
   return `COALESCE(NULLIF(${alias}.group_title, ''), '${UNGROUPED_NAME}')`;
@@ -8,6 +9,22 @@ export function groupNameSql(alias = "channels") {
 
 function compareNatural(a: string, b: string) {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function groupPrefix(name: string) {
+  const match = name.match(/^\s*([A-Za-z0-9]+)\s*\|/);
+  return match?.[1]?.toUpperCase() ?? "";
+}
+
+function defaultSortRank(name: string) {
+  const prefix = groupPrefix(name);
+  if (!prefix) return { bucket: 2, prefix: "", prefixRank: Number.MAX_SAFE_INTEGER };
+  const knownIndex = DEFAULT_PREFIX_ORDER.indexOf(prefix);
+  return {
+    bucket: knownIndex >= 0 ? 0 : 1,
+    prefix,
+    prefixRank: knownIndex >= 0 ? knownIndex : Number.MAX_SAFE_INTEGER
+  };
 }
 
 export function ensureChannelGroups(database: Database.Database, defaultEnabled = false) {
@@ -86,6 +103,27 @@ export function recalculateChannelNumbers(database: Database.Database) {
     }
     nextNumber += groupChannels.length <= 50 ? 25 : 50;
   }
+}
+
+export function applyDefaultGroupSort(database: Database.Database) {
+  ensureChannelGroups(database, false);
+  const groups = database
+    .prepare("SELECT id, name FROM channel_groups")
+    .all() as Array<{ id: number; name: string }>;
+
+  groups.sort((left, right) => {
+    const leftRank = defaultSortRank(left.name);
+    const rightRank = defaultSortRank(right.name);
+    if (leftRank.bucket !== rightRank.bucket) return leftRank.bucket - rightRank.bucket;
+    if (leftRank.prefixRank !== rightRank.prefixRank) return leftRank.prefixRank - rightRank.prefixRank;
+    const byPrefix = compareNatural(leftRank.prefix, rightRank.prefix);
+    if (byPrefix !== 0) return byPrefix;
+    return compareNatural(left.name, right.name);
+  });
+
+  const update = database.prepare("UPDATE channel_groups SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+  groups.forEach((group, index) => update.run(index, group.id));
+  recalculateChannelNumbers(database);
 }
 
 export function listChannelGroups(database: Database.Database) {

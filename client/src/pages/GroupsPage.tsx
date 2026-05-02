@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, EyeOff, GripVertical, Layers3, RefreshCw, Save, X } from "lucide-react";
+import { ArrowDownAZ, Eye, EyeOff, GripVertical, Layers3, RefreshCw, Save, X } from "lucide-react";
 import { api, type ChannelGroup } from "../api/client";
 
 function numberRange(group: ChannelGroup) {
@@ -20,6 +20,7 @@ export function GroupsPage() {
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [dragId, setDragId] = useState<number | null>(null);
+  const [pendingGroupIds, setPendingGroupIds] = useState<Set<number>>(new Set());
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -51,15 +52,38 @@ export function GroupsPage() {
     setSavedGroups(nextGroups);
   };
 
+  const mergeGroupUpdates = (nextGroups: ChannelGroup[]) => {
+    const nextById = new Map(nextGroups.map((group) => [group.id, group]));
+    const merge = (current: ChannelGroup[]) => current.map((group) => nextById.get(group.id) ?? group);
+    setGroups(merge);
+    setSavedGroups(merge);
+  };
+
   const updateGroup = async (group: ChannelGroup, body: { enabled?: boolean; useChannelNameForEpg?: boolean }) => {
     setError("");
     setMessage("");
+    setPendingGroupIds((current) => new Set(current).add(group.id));
+    const previousGroups = groups;
+    const previousSavedGroups = savedGroups;
+    setGroups((current) => current.map((item) => item.id === group.id ? {
+      ...item,
+      enabled: typeof body.enabled === "boolean" ? (body.enabled ? 1 : 0) : item.enabled,
+      use_channel_name_for_epg: typeof body.useChannelNameForEpg === "boolean" ? (body.useChannelNameForEpg ? 1 : 0) : item.use_channel_name_for_epg
+    } : item));
     try {
       const response = await api.updateGroup(group.id, body);
-      applyGroups(response.groups);
+      mergeGroupUpdates(response.groups);
       setMessage("Group settings saved.");
     } catch (err) {
+      setGroups(previousGroups);
+      setSavedGroups(previousSavedGroups);
       setError(err instanceof Error ? err.message : "Unable to save group");
+    } finally {
+      setPendingGroupIds((current) => {
+        const next = new Set(current);
+        next.delete(group.id);
+        return next;
+      });
     }
   };
 
@@ -102,6 +126,22 @@ export function GroupsPage() {
       setMessage("Channel numbers recalculated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to recalculate channel numbers");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const defaultSort = async () => {
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await api.defaultSortGroups();
+      applyGroups(response.groups);
+      setEditMode(false);
+      setMessage("Default group order applied and channel numbers recalculated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to apply default group order");
     } finally {
       setSaving(false);
     }
@@ -162,6 +202,14 @@ export function GroupsPage() {
                 <button
                   className="flex min-h-10 items-center gap-2 rounded-md border border-line bg-panel px-3 text-sm font-semibold hover:bg-ink/5 disabled:opacity-60"
                   disabled={saving}
+                  onClick={defaultSort}
+                  title="Sort country-prefixed groups first: US, CA, UK, AU, NZ, then the rest"
+                >
+                  <ArrowDownAZ size={16} /> Default sort
+                </button>
+                <button
+                  className="flex min-h-10 items-center gap-2 rounded-md border border-line bg-panel px-3 text-sm font-semibold hover:bg-ink/5 disabled:opacity-60"
+                  disabled={saving}
                   onClick={recalculate}
                 >
                   <RefreshCw size={16} className={saving ? "animate-spin" : ""} /> Recalculate
@@ -181,23 +229,25 @@ export function GroupsPage() {
         </section>
       ) : (
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {groups.map((group, index) => (
-            <article
-              key={group.id}
-              draggable={editMode}
-              onDragStart={() => setDragId(group.id)}
-              onDragEnd={() => setDragId(null)}
-              onDragOver={(event) => {
-                if (!editMode) return;
-                event.preventDefault();
-                moveDraggedGroup(group.id);
-              }}
-              className={`rounded-md border bg-panel p-4 shadow-soft transition ${dragId === group.id ? "border-accent opacity-70" : "border-line"} ${editMode ? "cursor-grab active:cursor-grabbing" : ""}`}
-            >
+          {groups.map((group, index) => {
+            const groupPending = pendingGroupIds.has(group.id);
+            return (
+              <article
+                key={group.id}
+                draggable={editMode}
+                onDragStart={() => setDragId(group.id)}
+                onDragEnd={() => setDragId(null)}
+                onDragOver={(event) => {
+                  if (!editMode) return;
+                  event.preventDefault();
+                  moveDraggedGroup(group.id);
+                }}
+                className={`rounded-md border bg-panel p-4 shadow-soft transition ${dragId === group.id ? "border-accent opacity-70" : "border-line"} ${!group.enabled ? "opacity-55" : ""} ${editMode ? "cursor-grab active:cursor-grabbing" : ""}`}
+              >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 gap-3">
                   <span className={`mt-1 grid size-9 shrink-0 place-items-center rounded-md border ${group.enabled ? "border-accent/50 bg-accent/15 text-accent" : "border-line text-ink/45"}`}>
-                    {editMode ? <GripVertical size={18} /> : group.enabled ? <Eye size={18} /> : <EyeOff size={18} />}
+                    {editMode ? <GripVertical size={18} /> : <Layers3 size={18} />}
                   </span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -209,30 +259,30 @@ export function GroupsPage() {
                     </p>
                   </div>
                 </div>
+                <button
+                  className={`grid size-9 shrink-0 place-items-center rounded-md border transition hover:bg-ink/5 disabled:opacity-60 ${group.enabled ? "border-accent/50 bg-accent/15 text-accent" : "border-line bg-mist text-ink/50"}`}
+                  disabled={groupPending}
+                  onClick={() => updateGroup(group, { enabled: !group.enabled })}
+                  title={group.enabled ? "Hide group everywhere" : "Show group"}
+                >
+                  {group.enabled ? <Eye size={18} /> : <EyeOff size={18} />}
+                </button>
               </div>
 
               <div className="mt-4 grid gap-3">
-                <label className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-line bg-mist px-3 text-sm font-semibold">
-                  Show in guide
-                  <input
-                    className="size-5 accent-accent"
-                    type="checkbox"
-                    checked={Boolean(group.enabled)}
-                    onChange={(event) => updateGroup(group, { enabled: event.target.checked })}
-                  />
-                </label>
                 <label className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-line bg-mist px-3 text-sm font-semibold">
                   Use channel name when EPG is empty
                   <input
                     className="size-5 accent-accent"
                     type="checkbox"
+                    disabled={groupPending}
                     checked={Boolean(group.use_channel_name_for_epg)}
                     onChange={(event) => updateGroup(group, { useChannelNameForEpg: event.target.checked })}
                   />
                 </label>
               </div>
             </article>
-          ))}
+          )})}
         </section>
       )}
     </div>

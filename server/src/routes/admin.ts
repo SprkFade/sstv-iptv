@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDb, setSetting, setting } from "../db/database.js";
 import { getRefreshProgress, startRefreshGuide } from "../ingest/refresh.js";
 import { plexAdminStatus } from "../services/plex.js";
-import { listChannelGroups, recalculateChannelNumbers } from "../services/channelGroups.js";
+import { applyDefaultGroupSort, listChannelGroups, recalculateChannelNumbers } from "../services/channelGroups.js";
 import { getActiveStreamMonitor } from "./stream.js";
 
 export const adminRouter = Router();
@@ -123,6 +123,12 @@ adminRouter.put("/groups/order", (req, res) => {
 adminRouter.post("/groups/recalculate", (_req, res) => {
   const db = getDb();
   db.transaction(() => recalculateChannelNumbers(db))();
+  res.json({ groups: listChannelGroups(db) });
+});
+
+adminRouter.post("/groups/default-sort", (_req, res) => {
+  const db = getDb();
+  db.transaction(() => applyDefaultGroupSort(db))();
   res.json({ groups: listChannelGroups(db) });
 });
 

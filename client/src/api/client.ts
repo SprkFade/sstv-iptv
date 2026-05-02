@@ -271,5 +271,6 @@ export const api = {
     request<{ groups: ChannelGroup[] }>(`/api/admin/groups/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   saveGroupOrder: (ids: number[]) =>
     request<{ groups: ChannelGroup[] }>("/api/admin/groups/order", { method: "PUT", body: JSON.stringify({ ids }) }),
+  defaultSortGroups: () => request<{ groups: ChannelGroup[] }>("/api/admin/groups/default-sort", { method: "POST" }),
   recalculateGroups: () => request<{ groups: ChannelGroup[] }>("/api/admin/groups/recalculate", { method: "POST" })
 };
