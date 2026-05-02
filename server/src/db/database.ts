@@ -175,6 +175,7 @@ function seedSettings() {
   insert.run("ffmpeg_reconnect_delay_max", String(config.ffmpegReconnectDelayMax));
   insert.run("ffmpeg_rw_timeout_seconds", String(config.ffmpegRwTimeoutSeconds));
   insert.run("ffmpeg_stale_restart_seconds", String(config.ffmpegStaleRestartSeconds));
+  insert.run("ffmpeg_hls_dvr_window_minutes", String(config.ffmpegHlsDvrWindowMinutes));
   insert.run("setup_complete", "false");
 }
 

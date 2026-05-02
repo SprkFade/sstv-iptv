@@ -188,6 +188,18 @@ export function AdminPage() {
                 />
               </label>
               <label className="grid gap-1 text-sm font-medium">
+                Rewind window minutes
+                <input
+                  className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"
+                  type="number"
+                  min={0}
+                  max={60}
+                  value={settings.ffmpegHlsDvrWindowMinutes}
+                  onChange={(event) => setSettings({ ...settings, ffmpegHlsDvrWindowMinutes: Number(event.target.value) })}
+                />
+                <span className="text-xs font-normal text-ink/55">0 keeps only the live playback buffer. Applies to new streams.</span>
+              </label>
+              <label className="grid gap-1 text-sm font-medium">
                 Reconnect delay max seconds
                 <input
                   className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"

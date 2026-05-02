@@ -21,6 +21,7 @@ adminRouter.get("/settings", async (_req, res, next) => {
       ffmpegReconnectDelayMax: Number(setting("ffmpeg_reconnect_delay_max", "5")),
       ffmpegRwTimeoutSeconds: Number(setting("ffmpeg_rw_timeout_seconds", "15")),
       ffmpegStaleRestartSeconds: Number(setting("ffmpeg_stale_restart_seconds", "30")),
+      ffmpegHlsDvrWindowMinutes: Number(setting("ffmpeg_hls_dvr_window_minutes", "20")),
       plex: await plexAdminStatus()
     });
   } catch (error) {
@@ -38,7 +39,8 @@ const settingsSchema = z.object({
   ffmpegHlsInputMode: z.enum(["direct", "pipe"]).optional().default("direct"),
   ffmpegReconnectDelayMax: z.number().int().min(1).max(60).optional().default(5),
   ffmpegRwTimeoutSeconds: z.number().int().min(5).max(120).optional().default(15),
-  ffmpegStaleRestartSeconds: z.number().int().min(0).max(300).optional().default(30)
+  ffmpegStaleRestartSeconds: z.number().int().min(0).max(300).optional().default(30),
+  ffmpegHlsDvrWindowMinutes: z.number().int().min(0).max(60).optional().default(20)
 });
 
 const groupUpdateSchema = z.object({
@@ -66,6 +68,7 @@ adminRouter.put("/settings", (req, res) => {
   setSetting("ffmpeg_reconnect_delay_max", String(body.ffmpegReconnectDelayMax));
   setSetting("ffmpeg_rw_timeout_seconds", String(body.ffmpegRwTimeoutSeconds));
   setSetting("ffmpeg_stale_restart_seconds", String(body.ffmpegStaleRestartSeconds));
+  setSetting("ffmpeg_hls_dvr_window_minutes", String(body.ffmpegHlsDvrWindowMinutes));
   res.json({ ok: true });
 });
 

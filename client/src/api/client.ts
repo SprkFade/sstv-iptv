@@ -269,6 +269,7 @@ export const api = {
     refreshIntervalHours: number;
     plexServerIdentifier: string;
     ffmpegHlsInputMode: "direct" | "pipe";
+    ffmpegHlsDvrWindowMinutes: number;
     ffmpegReconnectDelayMax: number;
     ffmpegRwTimeoutSeconds: number;
     ffmpegStaleRestartSeconds: number;
@@ -282,6 +283,7 @@ export const api = {
     refreshIntervalHours: number;
     plexServerIdentifier: string;
     ffmpegHlsInputMode: "direct" | "pipe";
+    ffmpegHlsDvrWindowMinutes: number;
     ffmpegReconnectDelayMax: number;
     ffmpegRwTimeoutSeconds: number;
     ffmpegStaleRestartSeconds: number;

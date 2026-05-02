@@ -75,6 +75,7 @@ type HlsClientStats = {
 };
 
 type HlsRuntimeSettings = {
+  dvrWindowMinutes: number;
   inputMode: HlsInputMode;
   reconnectDelayMax: number;
   rwTimeoutSeconds: number;
@@ -87,8 +88,7 @@ const HLS_IDLE_TIMEOUT_MS = 30 * 1000;
 const HLS_CLIENT_ACTIVE_MS = 45 * 1000;
 const HLS_CLIENT_STARTUP_GRACE_MS = 15 * 1000;
 const HLS_SEGMENT_SECONDS = 2;
-const HLS_DVR_WINDOW_MINUTES = 20;
-const HLS_DVR_SEGMENT_COUNT = Math.ceil((HLS_DVR_WINDOW_MINUTES * 60) / HLS_SEGMENT_SECONDS);
+const HLS_LIVE_SEGMENT_COUNT = 60;
 const HLS_DELETE_THRESHOLD = 30;
 const FFMPEG_NORMAL_PROBE_OPTIONS = [
   "-analyzeduration", "8000000",
@@ -116,7 +116,9 @@ function boundedInt(value: string, fallback: number, min: number, max: number) {
 }
 
 function hlsRuntimeSettings(): HlsRuntimeSettings {
+  const dvrWindowMinutes = boundedInt(setting("ffmpeg_hls_dvr_window_minutes", String(config.ffmpegHlsDvrWindowMinutes)), 20, 0, 60);
   return {
+    dvrWindowMinutes,
     inputMode: setting("ffmpeg_hls_input_mode", config.ffmpegHlsInputMode) === "pipe" ? "node-pipe" : "ffmpeg-direct",
     reconnectDelayMax: boundedInt(setting("ffmpeg_reconnect_delay_max", String(config.ffmpegReconnectDelayMax)), 5, 1, 60),
     rwTimeoutSeconds: boundedInt(setting("ffmpeg_rw_timeout_seconds", String(config.ffmpegRwTimeoutSeconds)), 15, 5, 120),
@@ -633,7 +635,6 @@ function buildTrace(session: HlsSession, files: Array<{ name: string; size: numb
     runtimeMs: now - session.startedAt,
     settings: {
       ...hlsRuntimeSettings(),
-      dvrWindowMinutes: HLS_DVR_WINDOW_MINUTES,
       segmentSeconds: HLS_SEGMENT_SECONDS
     },
     startedAt: new Date(session.startedAt).toISOString(),
@@ -748,6 +749,9 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   const existing = hlsSessions.get(channelId);
   const mode = hlsModeForChannel(channelId, streamUrl);
   const runtime = hlsRuntimeSettings();
+  const hlsListSize = runtime.dvrWindowMinutes > 0
+    ? Math.max(HLS_LIVE_SEGMENT_COUNT, Math.ceil((runtime.dvrWindowMinutes * 60) / HLS_SEGMENT_SECONDS))
+    : HLS_LIVE_SEGMENT_COUNT;
   if (existing && !existing.exited && existing.streamUrl === streamUrl && existing.mode === mode && existing.inputMode === runtime.inputMode) {
     existing.lastAccess = Date.now();
     return existing;
@@ -771,7 +775,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-muxpreload", "0",
     "-f", "hls",
     "-hls_time", String(HLS_SEGMENT_SECONDS),
-    "-hls_list_size", String(HLS_DVR_SEGMENT_COUNT),
+    "-hls_list_size", String(hlsListSize),
     "-hls_delete_threshold", String(HLS_DELETE_THRESHOLD),
     "-hls_flags", "delete_segments+independent_segments+omit_endlist+program_date_time+temp_file",
     "-hls_segment_filename", segmentPattern,
