@@ -28,6 +28,10 @@ const FFMPEG_PROBE_OPTIONS = [
   "-max_probe_packets", "500000",
   "-err_detect", "ignore_err"
 ];
+const FFMPEG_TIMESTAMP_OPTIONS = [
+  "-use_wallclock_as_timestamps", "1",
+  "-dts_delta_threshold", "1"
+];
 
 function findChannel(channelId: number) {
   return getDb()
@@ -172,6 +176,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-loglevel", "warning",
     "-fflags", "+genpts+igndts+discardcorrupt",
     ...FFMPEG_PROBE_OPTIONS,
+    ...FFMPEG_TIMESTAMP_OPTIONS,
     "-re",
     "-i", "pipe:0",
     "-map", "0:v:0?",
@@ -361,8 +366,9 @@ streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
   const ffmpeg = spawn(config.ffmpegPath, [
     "-hide_banner",
     "-loglevel", "warning",
-    "-fflags", "+genpts+discardcorrupt",
+    "-fflags", "+genpts+igndts+discardcorrupt",
     ...FFMPEG_PROBE_OPTIONS,
+    ...FFMPEG_TIMESTAMP_OPTIONS,
     "-i", "pipe:0",
     "-map", "0:v:0?",
     "-map", "0:a:0?",
