@@ -3,7 +3,7 @@ import { finished } from "node:stream/promises";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { Router } from "express";
+import { Router, type NextFunction, type Response } from "express";
 import { config } from "../config.js";
 import { getDb, setting } from "../db/database.js";
 import { groupNameSql } from "../services/channelGroups.js";
@@ -1061,7 +1061,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
   }
 });
 
-streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
+function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFunction) {
   const channelId = Number(req.params.channelId);
   if (!Number.isInteger(channelId)) return res.status(400).json({ error: "Invalid channel id" });
 
@@ -1136,6 +1136,17 @@ streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
   res.flushHeaders();
 
   ffmpeg.stdout.pipe(res);
+}
+
+streamRouter.get("/:channelId.:ext", (req: AuthedRequest, res, next) => {
+  const ext = (Array.isArray(req.params.ext) ? req.params.ext[0] ?? "" : req.params.ext).toLowerCase();
+  if (ext === "ts") return sendMpegTsTranscode(req, res, next);
+  if (ext === "m3u8") return res.redirect(302, `${req.baseUrl}/${req.params.channelId}/hls/index.m3u8?start=1`);
+  return res.status(404).json({ error: "Unsupported stream extension" });
+});
+
+streamRouter.get("/:channelId/transcode", (req: AuthedRequest, res, next) => {
+  return sendMpegTsTranscode(req, res, next);
 });
 
 streamRouter.get("/:channelId", async (req: AuthedRequest, res, next) => {

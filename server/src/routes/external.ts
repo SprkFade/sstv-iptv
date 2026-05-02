@@ -99,7 +99,27 @@ export function externalXcStreamAuth(req: AuthedRequest, res: Response, next: Ne
   next();
 }
 
-function hlsUrl(baseUrl: string, profile: ExternalProfile, channelId: number, style: "token" | "xc" = "token") {
+type ExternalOutputMode = "hls" | "mpegts";
+
+function requestedOutputMode(req: AuthedRequest, profile: ExternalProfile): ExternalOutputMode {
+  const output = typeof req.query.output === "string" ? req.query.output.toLowerCase() : "";
+  if (output === "ts" || output === "mpegts" || output === "mpeg-ts") return "mpegts";
+  if (output === "hls" || output === "m3u8") return "hls";
+  return profile.output_mode;
+}
+
+function outputExtension(mode: ExternalOutputMode) {
+  return mode === "mpegts" ? "ts" : "m3u8";
+}
+
+function streamUrl(baseUrl: string, profile: ExternalProfile, channelId: number, style: "token" | "xc" = "token", mode: ExternalOutputMode = profile.output_mode) {
+  if (mode === "mpegts") {
+    if (style === "xc") {
+      return `${baseUrl}/live/${encodeURIComponent(profile.xc_username)}/${encodeURIComponent(profile.xc_password)}/${channelId}.ts`;
+    }
+    return `${baseUrl}/external/live/${encodeURIComponent(profile.token)}/${channelId}.ts`;
+  }
+
   if (style === "xc") {
     return `${baseUrl}/live/${encodeURIComponent(profile.xc_username)}/${encodeURIComponent(profile.xc_password)}/${channelId}/hls/index.m3u8?start=1`;
   }
@@ -108,6 +128,7 @@ function hlsUrl(baseUrl: string, profile: ExternalProfile, channelId: number, st
 
 function buildM3u(req: AuthedRequest, profile: ExternalProfile, style: "token" | "xc" = "token") {
   const baseUrl = publicBaseUrl(req);
+  const mode = requestedOutputMode(req, profile);
   const channels = visibleExternalChannels();
   const lines = ["#EXTM3U"];
   for (const channel of channels) {
@@ -116,7 +137,7 @@ function buildM3u(req: AuthedRequest, profile: ExternalProfile, style: "token" |
     lines.push(
       `#EXTINF:-1 tvg-id="${attrEscape(tvgId)}" tvg-chno="${attrEscape(channelNumber)}" tvg-name="${attrEscape(channel.display_name)}" tvg-logo="${attrEscape(channel.logo_url ?? "")}" group-title="${attrEscape(channel.group_title ?? "Channels")}",${m3uEscape(channel.display_name)}`
     );
-    lines.push(hlsUrl(baseUrl, profile, channel.id, style));
+    lines.push(streamUrl(baseUrl, profile, channel.id, style, mode));
   }
   return `${lines.join("\n")}\n`;
 }
@@ -171,7 +192,12 @@ externalRouter.get("/xmltv.php", (req: AuthedRequest, res) => {
 externalRouter.get("/live/:username/:password/:channelId.:ext", (req: AuthedRequest, res) => {
   const profile = findExternalProfileByXc(routeParam(req.params.username), routeParam(req.params.password));
   if (!profile) return res.status(401).json({ error: "Invalid external access credentials" });
-  res.redirect(302, `/live/${encodeURIComponent(profile.xc_username)}/${encodeURIComponent(profile.xc_password)}/${routeParam(req.params.channelId)}/hls/index.m3u8?start=1`);
+  const channelId = routeParam(req.params.channelId);
+  const ext = routeParam(req.params.ext).toLowerCase();
+  if (ext === "ts") {
+    return res.redirect(302, `/live/${encodeURIComponent(profile.xc_username)}/${encodeURIComponent(profile.xc_password)}/${channelId}/transcode`);
+  }
+  return res.redirect(302, `/live/${encodeURIComponent(profile.xc_username)}/${encodeURIComponent(profile.xc_password)}/${channelId}/hls/index.m3u8?start=1`);
 });
 
 const shortEpgSchema = z.object({
@@ -223,6 +249,7 @@ externalRouter.get("/player_api.php", (req: AuthedRequest, res) => {
   if (action === "get_live_streams") {
     const groups = visibleExternalGroups();
     const groupIdByName = new Map(groups.map((group, index) => [group.name, String(index + 1)]));
+    const mode = requestedOutputMode(req, profile);
     return res.json(visibleExternalChannels().map((channel) => ({
       num: channel.channel_number ?? channel.sort_order ?? channel.id,
       name: channel.display_name,
@@ -234,8 +261,8 @@ externalRouter.get("/player_api.php", (req: AuthedRequest, res) => {
       category_id: groupIdByName.get(channel.group_title ?? "") ?? "0",
       custom_sid: "",
       tv_archive: 0,
-      direct_source: hlsUrl(baseUrl, profile, channel.id, "xc"),
-      container_extension: "m3u8",
+      direct_source: streamUrl(baseUrl, profile, channel.id, "xc", mode),
+      container_extension: outputExtension(mode),
       tv_archive_duration: 0
     })));
   }

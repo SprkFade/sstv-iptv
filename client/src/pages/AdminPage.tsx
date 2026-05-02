@@ -36,11 +36,12 @@ function trimBaseUrl(value: string) {
 function externalUrls(baseUrl: string, profile: ExternalProfile) {
   const base = trimBaseUrl(baseUrl);
   if (!base) return null;
+  const output = profile.output_mode === "mpegts" ? "ts" : "hls";
   return {
-    m3u: `${base}/external/m3u?token=${encodeURIComponent(profile.token)}`,
+    m3u: `${base}/external/m3u?token=${encodeURIComponent(profile.token)}&output=${output}`,
     xmltv: `${base}/external/xmltv?token=${encodeURIComponent(profile.token)}`,
     xcServer: base,
-    xcM3u: `${base}/get.php?username=${encodeURIComponent(profile.xc_username)}&password=${encodeURIComponent(profile.xc_password)}&type=m3u_plus&output=hls`,
+    xcM3u: `${base}/get.php?username=${encodeURIComponent(profile.xc_username)}&password=${encodeURIComponent(profile.xc_password)}&type=m3u_plus&output=${output}`,
     xcXmltv: `${base}/xmltv.php?username=${encodeURIComponent(profile.xc_username)}&password=${encodeURIComponent(profile.xc_password)}`
   };
 }
@@ -251,7 +252,7 @@ export function AdminPage() {
           </div>
           <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-line bg-mist p-3">
             <h2 className="text-base font-bold">External access</h2>
-            <p className="mt-1 text-sm text-ink/60">M3U, XMLTV, and XC-compatible HLS access for Emby and IPTV clients.</p>
+            <p className="mt-1 text-sm text-ink/60">M3U, XMLTV, and XC-compatible HLS or MPEG-TS access for Emby and IPTV clients.</p>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-medium">
                 Internal Docker base URL
@@ -297,6 +298,22 @@ export function AdminPage() {
                     </div>
                     <div className="mt-3 grid gap-2 text-sm">
                       <label className="grid gap-1 font-medium">
+                        Stream output
+                        <select
+                          className="min-h-10 rounded-md border border-line px-3"
+                          value={profile.output_mode}
+                          onChange={async (event) => {
+                            const outputMode = event.target.value as ExternalProfile["output_mode"];
+                            setExternalProfiles(settings.externalProfiles.map((item) => item.id === profile.id ? { ...item, output_mode: outputMode } : item));
+                            const response = await api.updateExternalProfile(profile.id, { outputMode });
+                            setExternalProfiles(response.profiles);
+                          }}
+                        >
+                          <option value="hls">HLS (.m3u8)</option>
+                          <option value="mpegts">MPEG-TS (.ts)</option>
+                        </select>
+                      </label>
+                      <label className="grid gap-1 font-medium">
                         XC username
                         <input
                           className="min-h-10 rounded-md border border-line px-3"
@@ -318,7 +335,7 @@ export function AdminPage() {
                         <div className="rounded-md border border-line p-2">
                           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">Internal URLs</div>
                           <div className="flex flex-wrap gap-2">
-                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} internal M3U`, internal.m3u)}><Copy size={15} /> M3U</button>
+                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} internal M3U`, internal.m3u)}><Copy size={15} /> M3U {profile.output_mode === "mpegts" ? "TS" : "HLS"}</button>
                             <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} internal XMLTV`, internal.xmltv)}><Copy size={15} /> XMLTV</button>
                             <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} XC server`, internal.xcServer)}><Copy size={15} /> XC server</button>
                           </div>
@@ -328,9 +345,9 @@ export function AdminPage() {
                         <div className="rounded-md border border-line p-2">
                           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/50">Public URLs</div>
                           <div className="flex flex-wrap gap-2">
-                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} public M3U`, external.m3u)}><Copy size={15} /> M3U</button>
+                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} public M3U`, external.m3u)}><Copy size={15} /> M3U {profile.output_mode === "mpegts" ? "TS" : "HLS"}</button>
                             <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} public XMLTV`, external.xmltv)}><Copy size={15} /> XMLTV</button>
-                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} XC M3U`, external.xcM3u)}><Copy size={15} /> XC M3U</button>
+                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} XC M3U`, external.xcM3u)}><Copy size={15} /> XC M3U {profile.output_mode === "mpegts" ? "TS" : "HLS"}</button>
                           </div>
                         </div>
                       )}
