@@ -158,6 +158,7 @@ function StreamStatusLog({ channelId, playerTrace }: { channelId: number; player
   const statusText = error ? "Status unavailable" : status?.active ? "FFmpeg running" : "FFmpeg stopped";
   const statusDetail = [
     status?.mode === "videoOnly" ? "video-only fallback" : "",
+    status?.mode === "audioOnly" ? "audio-only output" : "",
     typeof status?.exitCode === "number" ? `exit ${status.exitCode}` : "",
     status?.trace?.latestSegment ? `latest segment ${formatAge(status.trace.latestSegmentAgeMs)}` : ""
   ].filter(Boolean).join(" · ");

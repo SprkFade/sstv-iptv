@@ -53,7 +53,7 @@ type MpegTsSession = {
   streamUrl: string;
 };
 
-type HlsMode = "normal" | "videoOnly";
+type HlsMode = "normal" | "videoOnly" | "audioOnly";
 type HlsInputMode = "ffmpeg-direct" | "node-pipe";
 type StreamOutputType = "hls" | "mpegts";
 type HlsRequestKind = "playlist" | "segment" | "stream";
@@ -534,7 +534,7 @@ function ffmpegInputOptions(mode: HlsMode, logLevel = config.ffmpegLogLevel) {
     "-nostats",
     "-loglevel", logLevel,
     "-fflags", "+genpts+igndts+discardcorrupt",
-    ...(mode === "videoOnly" ? FFMPEG_VIDEO_ONLY_PROBE_OPTIONS : FFMPEG_NORMAL_PROBE_OPTIONS),
+    ...(mode === "normal" ? FFMPEG_NORMAL_PROBE_OPTIONS : FFMPEG_VIDEO_ONLY_PROBE_OPTIONS),
     ...FFMPEG_TIMESTAMP_OPTIONS,
     "-i", "pipe:0",
     "-dn",
@@ -558,7 +558,7 @@ function ffmpegDirectInputOptions(streamUrl: string, mode: HlsMode, runtime: Hls
       "-rw_timeout", String(runtime.rwTimeoutSeconds * 1_000_000)
     ] : []),
     "-fflags", "+genpts+igndts+discardcorrupt",
-    ...(mode === "videoOnly" ? FFMPEG_VIDEO_ONLY_PROBE_OPTIONS : FFMPEG_NORMAL_PROBE_OPTIONS),
+    ...(mode === "normal" ? FFMPEG_NORMAL_PROBE_OPTIONS : FFMPEG_VIDEO_ONLY_PROBE_OPTIONS),
     ...FFMPEG_TIMESTAMP_OPTIONS,
     "-i", streamUrl,
     "-dn",
@@ -567,6 +567,14 @@ function ffmpegDirectInputOptions(streamUrl: string, mode: HlsMode, runtime: Hls
 }
 
 function hlsOutputOptions(mode: HlsMode) {
+  const audioOptions = [
+    "-map", "0:a:0?",
+    "-af", "aresample=async=1:first_pts=0",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-ac", "2",
+    "-ar", "48000"
+  ];
   const videoOptions = [
     "-map", "0:v:0?",
     "-vf", "scale=min(1280\\,iw):-2:force_original_aspect_ratio=decrease,fps=30,format=yuv420p",
@@ -591,14 +599,16 @@ function hlsOutputOptions(mode: HlsMode) {
     ];
   }
 
+  if (mode === "audioOnly") {
+    return [
+      "-vn",
+      ...audioOptions
+    ];
+  }
+
   return [
     ...videoOptions,
-    "-map", "0:a:0?",
-    "-af", "aresample=async=1:first_pts=0",
-    "-c:a", "aac",
-    "-b:a", "128k",
-    "-ac", "2",
-    "-ar", "48000"
+    ...audioOptions
   ];
 }
 
@@ -667,15 +677,23 @@ function parseFfmpegQuality(stderr: string, section: "input" | "output"): Stream
   return { ...quality, label: qualityLabel(quality) };
 }
 
+function hasAudioOnlyInput(stderr: string) {
+  if (!/(?:\n|^)(?:Stream mapping:|Output #|Codec AVOption)/i.test(stderr)) return false;
+  const input = parseFfmpegQuality(stderr, "input");
+  return Boolean(input.audio && !input.video);
+}
+
 function fallbackOutputQuality(mode: HlsMode): StreamQuality {
   const quality: Omit<StreamQuality, "label"> = {
-    video: {
-      bitrate: "2800 kb/s",
-      codec: "h264",
-      fps: 30,
-      height: null,
-      width: 1280
-    },
+    video: mode === "audioOnly"
+      ? null
+      : {
+        bitrate: "2800 kb/s",
+        codec: "h264",
+        fps: 30,
+        height: null,
+        width: 1280
+      },
     audio: mode === "videoOnly"
       ? null
       : {
@@ -689,7 +707,9 @@ function fallbackOutputQuality(mode: HlsMode): StreamQuality {
     ...quality,
     label: mode === "videoOnly"
       ? "H.264 up to 1280w / 30fps / 2800 kb/s + no audio"
-      : "H.264 up to 1280w / 30fps / 2800 kb/s + AAC stereo / 48 kHz / 128 kb/s"
+      : mode === "audioOnly"
+        ? "AAC stereo / 48 kHz / 128 kb/s"
+        : "H.264 up to 1280w / 30fps / 2800 kb/s + AAC stereo / 48 kHz / 128 kb/s"
   };
 }
 
@@ -702,7 +722,7 @@ function streamQualities(session: { stderr: string; mode: HlsMode }) {
   const parsedOutput = parseFfmpegQuality(session.stderr, "output");
   return {
     input,
-    output: parsedOutput.video ? parsedOutput : fallbackOutputQuality(session.mode)
+    output: parsedOutput.video || parsedOutput.audio ? parsedOutput : fallbackOutputQuality(session.mode)
   };
 }
 
@@ -983,7 +1003,11 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
       lastSegmentName: ""
     },
     startedAt: Date.now(),
-    stderr: mode === "videoOnly" ? "Malformed EAC3 audio was detected earlier; using video-only fallback for this channel.\n" : "",
+    stderr: mode === "videoOnly"
+      ? "Malformed EAC3 audio was detected earlier; using video-only fallback for this channel.\n"
+      : mode === "audioOnly"
+        ? "Audio-only input was detected earlier; using audio-only HLS output for this channel.\n"
+        : "",
     streamUrl
   };
   recordSessionEvent(session, `Started FFmpeg HLS session in ${mode} mode using ${runtime.inputMode === "ffmpeg-direct" ? "direct FFmpeg input" : "Node pipe input"}.`);
@@ -1005,6 +1029,11 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
       hlsFallbackModes.set(channelId, { mode: "videoOnly", streamUrl });
       session.stderr = appendStderr(session.stderr, "\nMalformed EAC3 audio detected; restarting this channel with video-only fallback.\n");
       recordSessionEvent(session, "Malformed EAC3 audio detected; restarting with video-only fallback.");
+      if (!session.process.killed) session.process.kill("SIGTERM");
+    } else if (session.mode === "normal" && hasAudioOnlyInput(session.stderr)) {
+      hlsFallbackModes.set(channelId, { mode: "audioOnly", streamUrl });
+      session.stderr = appendStderr(session.stderr, "\nAudio-only input detected; restarting this channel with audio-only HLS output.\n");
+      recordSessionEvent(session, "Audio-only input detected; restarting with audio-only HLS output.");
       if (!session.process.killed) session.process.kill("SIGTERM");
     }
   });

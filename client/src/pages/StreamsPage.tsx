@@ -143,6 +143,7 @@ export function StreamsPage() {
                         {stream.outputType === "mpegts" ? "MPEG-TS" : "HLS"}
                       </span>
                       {stream.mode === "videoOnly" && <span className="rounded-md bg-gold/20 px-2 py-1 text-xs font-bold text-gold">Video only</span>}
+                      {stream.mode === "audioOnly" && <span className="rounded-md bg-accent/15 px-2 py-1 text-xs font-bold text-accent">Audio only</span>}
                     </div>
                     <h3 className="mt-2 truncate text-lg font-bold">{stream.channelName}</h3>
                     <p className="text-sm text-ink/60">{stream.groupTitle || "No group"} · {stream.inputMode === "ffmpeg-direct" ? "Direct FFmpeg input" : "Node pipe input"}</p>

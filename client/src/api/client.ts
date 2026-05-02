@@ -72,7 +72,7 @@ export interface StreamStatus {
   active: boolean;
   exitCode?: number | null;
   files: Array<{ name: string; size: number; modified: string }>;
-  mode?: "normal" | "videoOnly";
+  mode?: "normal" | "videoOnly" | "audioOnly";
   playlist?: string;
   stderr?: string;
   message?: string;
@@ -170,7 +170,7 @@ export interface StreamMonitorStream {
   inputMode: "ffmpeg-direct" | "node-pipe";
   lastAccess: string;
   latestSegmentAgeMs: number | null;
-  mode: "normal" | "videoOnly";
+  mode: "normal" | "videoOnly" | "audioOnly";
   outputType: "hls" | "mpegts";
   playlistRequests: number;
   providerConnectionCount: number;

@@ -256,7 +256,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
               trace(`prepared HLS playlist with ${segmentCount} segments`);
               return;
             }
-            lastError = `FFmpeg is preparing the first video segments (${segmentCount}/2).`;
+            lastError = `FFmpeg is preparing the first media segments (${segmentCount}/2).`;
           } else {
             lastError = `FFmpeg HLS is not ready yet (${response.status}).`;
           }
