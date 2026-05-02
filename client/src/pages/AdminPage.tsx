@@ -11,6 +11,24 @@ function formatDuration(seconds: number) {
   return `${minutes}m ${remainder}s`;
 }
 
+function formatRefreshTimestamp(value: string | number | null | undefined) {
+  if (!value) return "";
+  const raw = String(value);
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
+    ? `${raw.replace(" ", "T")}Z`
+    : raw;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return raw;
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const year = date.getFullYear();
+  const hours = date.getHours();
+  const hour12 = hours % 12 || 12;
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const period = hours >= 12 ? "PM" : "AM";
+  return `${month}/${day}/${year} ${hour12}:${minutes} ${period}`;
+}
+
 export function AdminPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [runs, setRuns] = useState<Array<Record<string, string | number | null>>>([]);
@@ -311,7 +329,7 @@ export function AdminPage() {
             <article key={String(run.id)} className="rounded-md border border-line bg-mist p-3 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <span className="font-semibold">{String(run.status)}</span>
-                <span className="text-xs text-ink/60">{String(run.started_at ?? "")}</span>
+                <span className="text-xs text-ink/60">{formatRefreshTimestamp(run.started_at)}</span>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
                 <div>
@@ -340,7 +358,7 @@ export function AdminPage() {
               {runs.map((run) => (
                 <tr key={String(run.id)} className="border-b border-line">
                   <td className="py-2 font-semibold">{String(run.status)}</td>
-                  <td>{String(run.started_at ?? "")}</td>
+                  <td>{formatRefreshTimestamp(run.started_at)}</td>
                   <td>{String(run.channel_count ?? 0)}</td>
                   <td>{String(run.program_count ?? 0)}</td>
                   <td>{String(run.matched_count ?? 0)}</td>
