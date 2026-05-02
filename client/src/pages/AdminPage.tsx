@@ -164,8 +164,8 @@ export function AdminPage() {
           <div className="rounded-md border border-line bg-mist p-3">
             <h2 className="text-base font-bold">Stream proxy</h2>
             <p className="mt-1 text-sm text-ink/60">FFmpeg HLS input and recovery settings apply to new playback sessions.</p>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-medium">
+            <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <label className="grid min-w-0 gap-1 text-sm font-medium">
                 HLS input mode
                 <select
                   className="min-h-11 w-full min-w-0 rounded-md border border-line bg-panel px-3"
@@ -176,7 +176,7 @@ export function AdminPage() {
                   <option value="pipe">Node pipe fallback</option>
                 </select>
               </label>
-              <label className="grid gap-1 text-sm font-medium">
+              <label className="grid min-w-0 gap-1 text-sm font-medium">
                 Stale restart seconds
                 <input
                   className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"
@@ -187,7 +187,7 @@ export function AdminPage() {
                   onChange={(event) => setSettings({ ...settings, ffmpegStaleRestartSeconds: Number(event.target.value) })}
                 />
               </label>
-              <label className="grid gap-1 text-sm font-medium">
+              <label className="grid min-w-0 gap-1 text-sm font-medium">
                 Rewind window minutes
                 <input
                   className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"
@@ -199,7 +199,7 @@ export function AdminPage() {
                 />
                 <span className="text-xs font-normal text-ink/55">0 keeps only the live playback buffer. Applies to new streams.</span>
               </label>
-              <label className="grid gap-1 text-sm font-medium">
+              <label className="grid min-w-0 gap-1 text-sm font-medium">
                 Reconnect delay max seconds
                 <input
                   className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"
@@ -210,7 +210,7 @@ export function AdminPage() {
                   onChange={(event) => setSettings({ ...settings, ffmpegReconnectDelayMax: Number(event.target.value) })}
                 />
               </label>
-              <label className="grid gap-1 text-sm font-medium">
+              <label className="grid min-w-0 gap-1 text-sm font-medium">
                 Read timeout seconds
                 <input
                   className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"
