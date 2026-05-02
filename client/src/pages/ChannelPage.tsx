@@ -172,7 +172,7 @@ function StreamStatusLog({ channelId, playerTrace }: { channelId: number; player
       {error && <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
 
       {status?.trace && (
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
           <div className="rounded-md border border-line bg-mist p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink/50">Newest segment</div>
             <div className="mt-1 text-sm font-bold">{status.trace.latestSegment?.name ?? "none"}</div>
@@ -196,6 +196,16 @@ function StreamStatusLog({ channelId, playerTrace }: { channelId: number; player
             <div className="text-xs text-ink/60">
               {status.trace.inputMode === "ffmpeg-direct" ? "upstream handled by FFmpeg" : `last byte ${formatAge(status.trace.lastInputAgeMs)}`}
             </div>
+          </div>
+          <div className="rounded-md border border-line bg-mist p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink/50">Input quality</div>
+            <div className="mt-1 text-sm font-bold">{status.trace.quality.input.label}</div>
+            <div className="text-xs text-ink/60">provider stream</div>
+          </div>
+          <div className="rounded-md border border-line bg-mist p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink/50">Output quality</div>
+            <div className="mt-1 text-sm font-bold">{status.trace.quality.output.label}</div>
+            <div className="text-xs text-ink/60">browser HLS</div>
           </div>
         </div>
       )}

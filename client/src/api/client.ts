@@ -91,6 +91,7 @@ export interface StreamStatus {
       targetDuration: number;
       windowSeconds: number;
     };
+    quality: StreamQualityPair;
     requests: {
       playlist: number;
       segment: number;
@@ -108,6 +109,28 @@ export interface StreamStatus {
     startedAt: string;
     tempFiles: string[];
   };
+}
+
+export interface StreamQuality {
+  label: string;
+  video: {
+    bitrate: string | null;
+    codec: string | null;
+    fps: number | null;
+    height: number | null;
+    width: number | null;
+  } | null;
+  audio: {
+    bitrate: string | null;
+    channels: string | null;
+    codec: string | null;
+    sampleRate: number | null;
+  } | null;
+}
+
+export interface StreamQualityPair {
+  input: StreamQuality;
+  output: StreamQuality;
 }
 
 export interface StreamMonitorClient {
@@ -145,6 +168,7 @@ export interface StreamMonitorStream {
   mode: "normal" | "videoOnly";
   playlistRequests: number;
   providerConnectionCount: number;
+  quality: StreamQualityPair;
   runtimeMs: number;
   segmentRequests: number;
   startedAt: string;

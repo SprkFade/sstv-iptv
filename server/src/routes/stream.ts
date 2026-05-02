@@ -39,6 +39,22 @@ type HlsSession = {
 type HlsMode = "normal" | "videoOnly";
 type HlsInputMode = "ffmpeg-direct" | "node-pipe";
 type HlsRequestKind = "playlist" | "segment";
+type StreamQuality = {
+  label: string;
+  video: {
+    bitrate: string | null;
+    codec: string | null;
+    fps: number | null;
+    height: number | null;
+    width: number | null;
+  } | null;
+  audio: {
+    bitrate: string | null;
+    channels: string | null;
+    codec: string | null;
+    sampleRate: number | null;
+  } | null;
+};
 
 type HlsClientStats = {
   id: string;
@@ -451,6 +467,106 @@ function hlsOutputOptions(mode: HlsMode) {
   ];
 }
 
+function parseBitrate(line: string) {
+  return line.match(/(\d+(?:\.\d+)?)\s*kb\/s/i)?.[0] ?? null;
+}
+
+function parseVideoQuality(line: string): StreamQuality["video"] {
+  const dimensions = line.match(/(?:^|[,\s])(\d{2,5})x(\d{2,5})(?:\s|,|\[)/);
+  const width = dimensions ? Number(dimensions[1]) : null;
+  const height = dimensions ? Number(dimensions[2]) : null;
+  const fps = Number(line.match(/(\d+(?:\.\d+)?)\s*(?:fps|tbr)/i)?.[1] ?? NaN);
+  return {
+    bitrate: parseBitrate(line),
+    codec: line.match(/Video:\s*([^,\s(]+)/i)?.[1] ?? null,
+    fps: Number.isFinite(fps) ? fps : null,
+    height: height && height >= 64 ? height : null,
+    width: width && width >= 64 ? width : null
+  };
+}
+
+function parseAudioQuality(line: string): StreamQuality["audio"] {
+  const sampleRate = Number(line.match(/(\d+)\s*Hz/i)?.[1] ?? NaN);
+  return {
+    bitrate: parseBitrate(line),
+    channels: line.match(/\b(mono|stereo|5\.1|7\.1|[1-9]\d*\s+channels?)\b/i)?.[1] ?? null,
+    codec: line.match(/Audio:\s*([^,\s(]+)/i)?.[1] ?? null,
+    sampleRate: Number.isFinite(sampleRate) ? sampleRate : null
+  };
+}
+
+function qualityLabel(quality: Omit<StreamQuality, "label">) {
+  const videoParts = [
+    quality.video?.codec?.toUpperCase() ?? null,
+    quality.video?.width && quality.video.height ? `${quality.video.width}x${quality.video.height}` : null,
+    quality.video?.fps ? `${Math.round(quality.video.fps)}fps` : null,
+    quality.video?.bitrate
+  ].filter(Boolean);
+  const audioParts = quality.audio
+    ? [
+      quality.audio.codec?.toUpperCase() ?? null,
+      quality.audio.channels,
+      quality.audio.sampleRate ? `${Math.round(quality.audio.sampleRate / 1000)} kHz` : null,
+      quality.audio.bitrate
+    ].filter(Boolean)
+    : [];
+  const parts = [
+    videoParts.length ? videoParts.join(" / ") : null,
+    audioParts.length ? audioParts.join(" / ") : quality.audio === null ? "no audio" : null
+  ].filter(Boolean);
+  return parts.join(" + ") || "Detecting...";
+}
+
+function parseFfmpegQuality(stderr: string, section: "input" | "output"): StreamQuality {
+  let current: "input" | "output" | null = null;
+  const quality: Omit<StreamQuality, "label"> = { video: null, audio: null };
+
+  for (const line of stderr.split(/\r?\n/)) {
+    if (/^\s*Input #/i.test(line)) current = "input";
+    if (/^\s*Output #/i.test(line)) current = "output";
+    if (current !== section) continue;
+    if (!quality.video && /\bVideo:/i.test(line)) quality.video = parseVideoQuality(line);
+    if (!quality.audio && /\bAudio:/i.test(line)) quality.audio = parseAudioQuality(line);
+  }
+
+  return { ...quality, label: qualityLabel(quality) };
+}
+
+function fallbackOutputQuality(mode: HlsMode): StreamQuality {
+  const quality: Omit<StreamQuality, "label"> = {
+    video: {
+      bitrate: "2800 kb/s",
+      codec: "h264",
+      fps: 30,
+      height: null,
+      width: 1280
+    },
+    audio: mode === "videoOnly"
+      ? null
+      : {
+        bitrate: "128 kb/s",
+        channels: "stereo",
+        codec: "aac",
+        sampleRate: 48000
+      }
+  };
+  return {
+    ...quality,
+    label: mode === "videoOnly"
+      ? "H.264 up to 1280w / 30fps / 2800 kb/s + no audio"
+      : "H.264 up to 1280w / 30fps / 2800 kb/s + AAC stereo / 48 kHz / 128 kb/s"
+  };
+}
+
+function streamQualities(session: HlsSession) {
+  const input = parseFfmpegQuality(session.stderr, "input");
+  const parsedOutput = parseFfmpegQuality(session.stderr, "output");
+  return {
+    input,
+    output: parsedOutput.video ? parsedOutput : fallbackOutputQuality(session.mode)
+  };
+}
+
 function parsePlaylistStats(playlist: string) {
   const lines = playlist.split(/\r?\n/).map((line) => line.trim());
   const targetDuration = Number(lines.find((line) => line.startsWith("#EXT-X-TARGETDURATION:"))?.split(":")[1] ?? 0);
@@ -484,6 +600,7 @@ function buildTrace(session: HlsSession, files: Array<{ name: string; size: numb
     latestSegmentAgeMs: latestSegment ? now - new Date(latestSegment.modified).getTime() : null,
     playlistAgeMs: playlistFile ? now - new Date(playlistFile.modified).getTime() : null,
     playlistStats: parsePlaylistStats(playlist),
+    quality: streamQualities(session),
     requests: {
       playlist: session.requestStats.playlist,
       segment: session.requestStats.segment,
@@ -555,6 +672,7 @@ export function getActiveStreamMonitor() {
         mode: session.mode,
         playlistRequests: session.requestStats.playlist,
         providerConnectionCount: !session.exited ? 1 : 0,
+        quality: streamQualities(session),
         runtimeMs: now - session.startedAt,
         segmentRequests: session.requestStats.segment,
         startedAt: new Date(session.startedAt).toISOString(),

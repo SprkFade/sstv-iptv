@@ -127,7 +127,7 @@ export function StreamsPage() {
                   <h3 className="mt-2 truncate text-lg font-bold">{stream.channelName}</h3>
                   <p className="text-sm text-ink/60">{stream.groupTitle || "No group"} · {stream.inputMode === "ffmpeg-direct" ? "Direct FFmpeg input" : "Node pipe input"}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 lg:min-w-[28rem]">
+                <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 xl:grid-cols-6 xl:min-w-[48rem]">
                   <div className="rounded-md border border-line bg-panel p-3">
                     <div className="text-ink/50">Clients</div>
                     <div className="font-bold">{stream.clientCount}</div>
@@ -143,6 +143,14 @@ export function StreamsPage() {
                   <div className="rounded-md border border-line bg-panel p-3">
                     <div className="text-ink/50">Requests</div>
                     <div className="font-bold">{stream.playlistRequests}/{stream.segmentRequests}</div>
+                  </div>
+                  <div className="rounded-md border border-line bg-panel p-3">
+                    <div className="text-ink/50">Input quality</div>
+                    <div className="font-bold leading-snug">{stream.quality.input.label}</div>
+                  </div>
+                  <div className="rounded-md border border-line bg-panel p-3">
+                    <div className="text-ink/50">Output quality</div>
+                    <div className="font-bold leading-snug">{stream.quality.output.label}</div>
                   </div>
                 </div>
               </div>
