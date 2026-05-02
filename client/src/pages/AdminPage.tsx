@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, ChevronDown, Copy, Database, KeyRound, RefreshCw, Server, Users } from "lucide-react";
+import { Activity, Copy, Database, KeyRound, RefreshCw, Server, Users } from "lucide-react";
 import { api, type ExternalProfile, type RefreshProgress } from "../api/client";
 
 type Settings = Awaited<ReturnType<typeof api.settings>>;
@@ -198,17 +198,14 @@ export function AdminPage() {
             <div className="mt-3 grid min-w-0 max-w-full grid-cols-1 items-start gap-3 lg:grid-cols-2">
               <label className="grid min-w-0 gap-1 text-sm font-medium">
                 HLS input mode
-                <span className="relative block min-w-0">
-                  <select
-                    className="min-h-11 w-full min-w-0 appearance-none rounded-md border border-line bg-panel py-2 pl-3 pr-11"
-                    value={settings.ffmpegHlsInputMode}
-                    onChange={(event) => setSettings({ ...settings, ffmpegHlsInputMode: event.target.value as Settings["ffmpegHlsInputMode"] })}
-                  >
-                    <option value="direct">Direct FFmpeg input</option>
-                    <option value="pipe">Node pipe fallback</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink/70" size={18} />
-                </span>
+                <select
+                  className="min-h-11 w-full min-w-0 rounded-md border border-line bg-panel py-2 pl-3"
+                  value={settings.ffmpegHlsInputMode}
+                  onChange={(event) => setSettings({ ...settings, ffmpegHlsInputMode: event.target.value as Settings["ffmpegHlsInputMode"] })}
+                >
+                  <option value="direct">Direct FFmpeg input</option>
+                  <option value="pipe">Node pipe fallback</option>
+                </select>
               </label>
               <label className="grid min-w-0 gap-1 text-sm font-medium">
                 Stale restart seconds

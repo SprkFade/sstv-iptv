@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronDown, KeyRound, Link as LinkIcon, Server, Shield } from "lucide-react";
+import { Check, KeyRound, Link as LinkIcon, Server, Shield } from "lucide-react";
 import { api, type PlexServer } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -201,16 +201,13 @@ export function SetupPage() {
                 </div>
                 <label className="grid gap-1 text-sm font-medium">
                   Plex server
-                  <div className="relative">
-                    <select className="min-h-11 w-full appearance-none rounded-md border border-line px-3 pr-12" value={selectedServer} onChange={(event) => setSelectedServer(event.target.value)}>
-                      {servers.map((server) => (
-                        <option key={server.clientIdentifier} value={server.clientIdentifier}>
-                          {server.name}{server.owned ? " (owned)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-ink/50" size={18} />
-                  </div>
+                  <select className="min-h-11 w-full rounded-md border border-line px-3" value={selectedServer} onChange={(event) => setSelectedServer(event.target.value)}>
+                    {servers.map((server) => (
+                      <option key={server.clientIdentifier} value={server.clientIdentifier}>
+                        {server.name}{server.owned ? " (owned)" : ""}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
             )}
