@@ -9,6 +9,7 @@ const PAGE_SIZE = 25;
 const GUIDE_STATE_KEY = "sstv-guide-state";
 const GUIDE_FUTURE_HOURS = 12;
 const GUIDE_LOOKBACK_HOURS = 2;
+const GUIDE_DEFAULT_LOOKBACK_MINUTES = 30;
 const GUIDE_TOTAL_HOURS = GUIDE_LOOKBACK_HOURS + GUIDE_FUTURE_HOURS;
 const MINUTE_WIDTH = 5;
 const CHANNEL_COLUMN_WIDTH = 260;
@@ -205,9 +206,10 @@ export function HomePage() {
     if (restoredScrollRef.current || loading || airing.length === 0) return;
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        const restoredLeft = typeof restoredState.current.guideScrollLeft === "number" && restoredState.current.guideScrollLeft > 0
-          ? restoredState.current.guideScrollLeft
-          : initialNowOffset;
+        const savedLeft = restoredState.current.guideScrollLeft;
+        const restoredLeft = typeof savedLeft === "number" && savedLeft > 0
+          ? Math.abs(savedLeft - initialNowOffset) < 2 ? defaultGuideScrollLeft : savedLeft
+          : defaultGuideScrollLeft;
         guideScrollRef.current?.scrollTo({ left: restoredLeft });
         const selectedChannelId = selectedChannelIdRef.current;
         const selectedRow = selectedChannelId
@@ -295,8 +297,8 @@ export function HomePage() {
     selectedChannelIdRef.current = undefined;
     setHasMore(false);
     setActiveGroup(nextGroup);
-    channelListRef.current?.scrollTo({ left: initialNowOffset, top: 0 });
-    saveGuideState({ activeGroup: nextGroup, scrollY: 0, guideScrollLeft: GUIDE_LOOKBACK_HOURS * 60 * MINUTE_WIDTH, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
+    channelListRef.current?.scrollTo({ left: defaultGuideScrollLeft, top: 0 });
+    saveGuideState({ activeGroup: nextGroup, scrollY: 0, guideScrollLeft: defaultGuideScrollLeft, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
   const toggleFavoritesOnly = () => {
@@ -306,8 +308,8 @@ export function HomePage() {
     selectedChannelIdRef.current = undefined;
     setHasMore(false);
     setFavoritesOnly(next);
-    channelListRef.current?.scrollTo({ left: initialNowOffset, top: 0 });
-    saveGuideState({ favoritesOnly: next, scrollY: 0, guideScrollLeft: GUIDE_LOOKBACK_HOURS * 60 * MINUTE_WIDTH, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
+    channelListRef.current?.scrollTo({ left: defaultGuideScrollLeft, top: 0 });
+    saveGuideState({ favoritesOnly: next, scrollY: 0, guideScrollLeft: defaultGuideScrollLeft, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
   const rememberBeforeNavigate = (channelId?: number) => {
@@ -328,6 +330,7 @@ export function HomePage() {
   const timeMarkers = buildTimeMarkers(guideStartRef.current);
   const currentOffset = Math.max(0, Math.min(TIMELINE_WIDTH, minutesBetween(guideStartRef.current, now) * MINUTE_WIDTH));
   const initialNowOffset = GUIDE_LOOKBACK_HOURS * 60 * MINUTE_WIDTH;
+  const defaultGuideScrollLeft = Math.max(0, initialNowOffset - GUIDE_DEFAULT_LOOKBACK_MINUTES * MINUTE_WIDTH);
   const guideTemplateColumns = `${CHANNEL_COLUMN_WIDTH}px ${TIMELINE_WIDTH}px`;
 
   return (
