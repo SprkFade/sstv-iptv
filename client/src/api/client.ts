@@ -80,6 +80,7 @@ export interface StreamStatus {
     completedSegmentCount: number;
     events: Array<{ at: string; message: string }>;
     inputBytes: number;
+    inputMode?: "ffmpeg-direct" | "node-pipe";
     lastInputAgeMs: number | null;
     latestSegment: { name: string; size: number; modified: string } | null;
     latestSegmentAgeMs: number | null;

@@ -188,8 +188,12 @@ function StreamStatusLog({ channelId, playerTrace }: { channelId: number; player
           </div>
           <div className="rounded-md border border-line bg-mist p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink/50">Provider input</div>
-            <div className="mt-1 text-sm font-bold">{formatBytes(status.trace.inputBytes)}</div>
-            <div className="text-xs text-ink/60">last byte {formatAge(status.trace.lastInputAgeMs)}</div>
+            <div className="mt-1 text-sm font-bold">
+              {status.trace.inputMode === "ffmpeg-direct" ? "FFmpeg direct" : formatBytes(status.trace.inputBytes)}
+            </div>
+            <div className="text-xs text-ink/60">
+              {status.trace.inputMode === "ffmpeg-direct" ? "upstream handled by FFmpeg" : `last byte ${formatAge(status.trace.lastInputAgeMs)}`}
+            </div>
           </div>
         </div>
       )}
