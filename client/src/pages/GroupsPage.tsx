@@ -353,7 +353,7 @@ export function GroupsPage() {
 
               <div className="mt-4 grid gap-3">
                 <label className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-line bg-mist px-3 text-sm font-semibold">
-                  Use channel name when EPG is empty
+                  Use channel name as EPG title
                   <input
                     className="size-5 accent-accent"
                     type="checkbox"

@@ -129,8 +129,12 @@ export function visibleExternalGroups(db: Database.Database = getDb()) {
 export function visibleExternalPrograms(db: Database.Database = getDb()) {
   return db
     .prepare(
-      `SELECT programs.channel_id, programs.title, programs.subtitle, programs.description,
-              programs.category, programs.start_time, programs.end_time
+      `SELECT programs.channel_id,
+              CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN channels.display_name ELSE programs.title END AS title,
+              CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN '' ELSE programs.subtitle END AS subtitle,
+              CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN '' ELSE programs.description END AS description,
+              CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN channels.group_title ELSE programs.category END AS category,
+              programs.start_time, programs.end_time
        FROM programs
        JOIN channels ON channels.id = programs.channel_id
        ${visibleGroupJoin}
@@ -143,8 +147,12 @@ export function visibleExternalPrograms(db: Database.Database = getDb()) {
 export function visibleExternalProgramsForChannel(channelId: number, db: Database.Database = getDb()) {
   return db
     .prepare(
-      `SELECT programs.channel_id, programs.title, programs.subtitle, programs.description,
-              programs.category, programs.start_time, programs.end_time
+      `SELECT programs.channel_id,
+              CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN channels.display_name ELSE programs.title END AS title,
+              CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN '' ELSE programs.subtitle END AS subtitle,
+              CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN '' ELSE programs.description END AS description,
+              CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN channels.group_title ELSE programs.category END AS category,
+              programs.start_time, programs.end_time
        FROM programs
        JOIN channels ON channels.id = programs.channel_id
        ${visibleGroupJoin}

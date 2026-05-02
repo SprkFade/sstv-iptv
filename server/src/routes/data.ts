@@ -13,6 +13,17 @@ const channelOrder = `CASE WHEN channels.channel_number IS NULL THEN 1 ELSE 0 EN
        channels.display_name COLLATE NOCASE`;
 const visibleGroupJoin = `JOIN channel_groups ON channel_groups.name = ${groupNameSql()} AND channel_groups.enabled = 1`;
 
+function channelNameProgram(program: Record<string, unknown>, channel: Record<string, unknown>) {
+  if (!channel.use_channel_name_for_epg) return program;
+  return {
+    ...program,
+    title: channel.display_name,
+    subtitle: "",
+    description: "",
+    category: channel.group_title ?? ""
+  };
+}
+
 dataRouter.get("/channels", (req: AuthedRequest, res) => {
   const group = typeof req.query.group === "string" ? req.query.group : "";
   const favoritesOnly = req.query.favorites === "true";
@@ -156,7 +167,9 @@ dataRouter.get("/guide/current", (req: AuthedRequest, res) => {
         programs: [fallback]
       };
     }
-    return { ...row, programs };
+    const mappedPrograms = programs.map((program) => channelNameProgram(program, row));
+    const currentProgram = row.program_id ? channelNameProgram(row, row) : row;
+    return { ...currentProgram, programs: mappedPrograms };
   });
 
   const total = getDb()
@@ -216,7 +229,10 @@ dataRouter.get("/guide/channel/:id", (req: AuthedRequest, res) => {
       }]
     });
   }
-  res.json({ channel, programs });
+  res.json({
+    channel,
+    programs: (programs as Array<Record<string, unknown>>).map((program) => channelNameProgram(program, channel as Record<string, unknown>))
+  });
 });
 
 const searchSchema = z.object({
@@ -240,18 +256,21 @@ dataRouter.get("/search", (req: AuthedRequest, res) => {
     .all(like, like, like);
   const programs = getDb()
     .prepare(
-      `SELECT programs.id, programs.title, programs.subtitle, programs.category,
+      `SELECT programs.id,
+              CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN channels.display_name ELSE programs.title END AS title,
+              CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN '' ELSE programs.subtitle END AS subtitle,
+              CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN channels.group_title ELSE programs.category END AS category,
               programs.start_time, programs.end_time, channels.id AS channel_id,
               channels.display_name AS channel_name, channels.logo_url
        FROM programs
        JOIN channels ON channels.id = programs.channel_id
        ${visibleGroupJoin}
        WHERE channels.enabled = 1 AND programs.end_time >= ?
-         AND (programs.title LIKE ? OR programs.subtitle LIKE ? OR programs.description LIKE ? OR programs.category LIKE ?)
+         AND (programs.title LIKE ? OR programs.subtitle LIKE ? OR programs.description LIKE ? OR programs.category LIKE ? OR channels.display_name LIKE ?)
        ORDER BY programs.start_time
        LIMIT 60`
     )
-    .all(nowIso(), like, like, like, like);
+    .all(nowIso(), like, like, like, like, like);
 
   res.json({ channels, programs });
 });
