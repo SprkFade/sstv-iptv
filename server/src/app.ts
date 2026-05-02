@@ -46,6 +46,8 @@ export function createApp() {
       const name = path.basename(filePath);
       if (name === "sw.js") {
         res.setHeader("cache-control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      } else if (name === "manifest.webmanifest" || filePath.includes(`${path.sep}icons${path.sep}`)) {
+        res.setHeader("cache-control", "no-store, no-cache, must-revalidate, proxy-revalidate");
       } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
         res.setHeader("cache-control", "public, max-age=31536000, immutable");
       }

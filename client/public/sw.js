@@ -1,5 +1,5 @@
-const CACHE_NAME = "sstv-iptv-shell-v3";
-const SHELL = ["/manifest.webmanifest", "/icons/icon.svg"];
+const CACHE_NAME = "sstv-iptv-shell-v4";
+const SHELL = ["/manifest.webmanifest?v=4", "/icons/icon.svg?v=4"];
 const APP_SHELL = "/";
 
 self.addEventListener("install", (event) => {
