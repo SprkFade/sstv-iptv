@@ -8,6 +8,7 @@
 @tailwind utilities;
 
 :root {
+  --app-shell-top: 4.5rem;
   --color-ink: 226 232 240;
   --color-mist: 10 14 20;
   --color-panel: 17 24 39;
@@ -93,7 +94,7 @@ select {
 }
 
 .app-shell {
-  padding-top: 4.5rem;
+  padding-top: var(--app-shell-top);
 }
 
 @media (min-width: 768px) {
@@ -101,7 +102,7 @@ select {
     bottom: auto;
     left: max(1rem, calc((100vw - 80rem) / 2 + 1rem));
     right: auto;
-    top: 5.5rem;
+    top: var(--app-shell-top);
     width: 220px;
   }
 }
