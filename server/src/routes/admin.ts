@@ -102,7 +102,9 @@ adminRouter.get("/refresh-status", (_req, res) => {
 adminRouter.get("/refresh-runs", (_req, res) => {
   const rows = getDb()
     .prepare(
-      `SELECT id, status, started_at, finished_at, channel_count, program_count, matched_count, error
+      `SELECT id, status, started_at, finished_at,
+              MAX(0, unixepoch(COALESCE(finished_at, CURRENT_TIMESTAMP)) - unixepoch(started_at)) AS duration_seconds,
+              channel_count, program_count, matched_count, error
        FROM refresh_runs
        ORDER BY id DESC
        LIMIT 50`

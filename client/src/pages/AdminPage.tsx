@@ -11,6 +11,13 @@ function formatDuration(seconds: number) {
   return `${minutes}m ${remainder}s`;
 }
 
+function formatRunDuration(run: Record<string, string | number | null>) {
+  const seconds = Number(run.duration_seconds ?? 0);
+  if (!Number.isFinite(seconds)) return "";
+  const duration = formatDuration(Math.max(0, Math.floor(seconds)));
+  return run.status === "running" ? `${duration} so far` : duration;
+}
+
 function formatRefreshTimestamp(value: string | number | null | undefined) {
   if (!value) return "";
   const raw = String(value);
@@ -501,6 +508,10 @@ export function AdminPage() {
                   <div className="font-bold">{String(run.matched_count ?? 0)}</div>
                 </div>
               </div>
+              <div className="mt-3 text-xs">
+                <div className="text-ink/50">Duration</div>
+                <div className="font-bold">{formatRunDuration(run)}</div>
+              </div>
               {run.error && <p className="mt-2 line-clamp-2 text-xs text-rose-700">{String(run.error)}</p>}
             </article>
           ))}
@@ -508,13 +519,14 @@ export function AdminPage() {
         <div className="mt-3 hidden overflow-x-auto md:block">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="border-b border-line text-ink/60">
-              <tr><th className="py-2">Status</th><th>Started</th><th>Channels</th><th>Programs</th><th>Matched</th><th>Error</th></tr>
+              <tr><th className="py-2">Status</th><th>Started</th><th>Duration</th><th>Channels</th><th>Programs</th><th>Matched</th><th>Error</th></tr>
             </thead>
             <tbody>
               {runs.map((run) => (
                 <tr key={String(run.id)} className="border-b border-line">
                   <td className="py-2 font-semibold">{String(run.status)}</td>
                   <td>{formatRefreshTimestamp(run.started_at)}</td>
+                  <td>{formatRunDuration(run)}</td>
                   <td>{String(run.channel_count ?? 0)}</td>
                   <td>{String(run.program_count ?? 0)}</td>
                   <td>{String(run.matched_count ?? 0)}</td>
