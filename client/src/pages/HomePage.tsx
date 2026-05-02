@@ -436,10 +436,10 @@ export function HomePage() {
           >
           <div className="relative grid" style={{ width: CHANNEL_COLUMN_WIDTH + TIMELINE_WIDTH, gridTemplateColumns: guideTemplateColumns }}>
             <div
-              className="pointer-events-none absolute inset-y-0 z-40 w-0.5 bg-accent shadow-[0_0_12px_rgba(77,166,255,0.7)]"
+              className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-accent shadow-[0_0_12px_rgba(77,166,255,0.7)]"
               style={{ left: CHANNEL_COLUMN_WIDTH + currentOffset }}
             />
-            <div className="sticky left-0 top-0 z-30 flex h-14 items-center border-b border-r border-line bg-panel px-4">
+            <div className="sticky left-0 top-0 z-[60] flex h-14 items-center border-b border-r border-line bg-panel px-4">
               <div>
                 <div className="text-sm font-bold">Channels</div>
                 <div className="text-xs text-ink/50">Back 2h / forward 12h</div>
@@ -468,7 +468,7 @@ export function HomePage() {
               const programs = item.programs ?? [];
               return (
                 <article id={`guide-channel-${item.channel_id}`} key={item.channel_id} className="contents">
-                  <div className="sticky left-0 z-10 grid min-h-24 grid-cols-[4rem_minmax(0,1fr)_2.75rem] items-center gap-3 border-b border-r border-line bg-panel px-3">
+                  <div className="sticky left-0 z-30 grid min-h-24 grid-cols-[4rem_minmax(0,1fr)_2.75rem] items-center gap-3 border-b border-r border-line bg-panel px-3">
                     <Link to={`/channel/${item.channel_id}`} onClick={() => rememberBeforeNavigate(item.channel_id)}>
                       <ChannelLogo src={item.logo_url} name={item.display_name} size="sm" />
                     </Link>

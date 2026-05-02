@@ -61,12 +61,19 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-mist text-ink">
       <header className="app-header sticky-chrome z-40 border-b border-line bg-mist/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3">
-          <Link to="/" className="flex items-center gap-2 text-base font-bold">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-white">
-              <Tv size={19} strokeWidth={2.2} className="block" />
-            </span>
-            SSTV IPTV
-          </Link>
+          <div className="flex min-w-0 items-center gap-4">
+            <Link to="/" className="flex shrink-0 items-center gap-2 text-base font-bold">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-white">
+                <Tv size={19} strokeWidth={2.2} className="block" />
+              </span>
+              SSTV IPTV
+            </Link>
+            {navUser && (
+              <nav className="hidden items-center gap-1 md:flex">
+                {navLinks}
+              </nav>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               className="grid size-10 place-items-center rounded-md border border-line bg-panel text-ink hover:bg-ink/5"
@@ -90,18 +97,12 @@ function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      {navUser && (
-        <nav className="desktop-side-nav sticky-chrome fixed z-30 hidden h-fit rounded-md border border-line bg-panel p-2 shadow-soft md:block">
-          {navLinks}
-        </nav>
-      )}
-      <div className={`app-shell mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 pt-4 ${navUser ? "pb-24 md:grid-cols-[220px_minmax(0,1fr)] md:pb-6" : "pb-6"}`}>
+      <div className={`app-shell mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 pt-4 ${navUser ? "pb-24 md:pb-6" : "pb-6"}`}>
         {navUser && (
           <nav className="sticky-chrome fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-line bg-panel px-2 py-2 md:hidden">
             {navLinks}
           </nav>
         )}
-        {navUser && <div className="hidden md:block" aria-hidden="true" />}
         <main className="min-w-0">{children}</main>
       </div>
     </div>
