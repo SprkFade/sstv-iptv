@@ -167,6 +167,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-fflags", "+genpts+discardcorrupt",
     "-analyzeduration", "10000000",
     "-probesize", "10000000",
+    "-re",
     "-i", "pipe:0",
     "-map", "0:v:0?",
     "-map", "0:a:0?",
@@ -193,7 +194,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     "-hls_time", "2",
     "-hls_list_size", "18",
     "-hls_delete_threshold", "12",
-    "-hls_flags", "delete_segments+append_list+independent_segments+omit_endlist",
+    "-hls_flags", "delete_segments+independent_segments+omit_endlist+program_date_time+temp_file",
     "-hls_segment_filename", segmentPattern,
     "index.m3u8"
   ], { cwd: dir, stdio: ["pipe", "pipe", "pipe"] });
@@ -307,7 +308,9 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
       await waitForFile(filePath, 10_000);
     }
 
-    res.setHeader("cache-control", "no-store");
+    res.setHeader("cache-control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("pragma", "no-cache");
+    res.setHeader("expires", "0");
     res.setHeader("x-accel-buffering", "no");
     if (file.endsWith(".m3u8")) {
       res.type("application/vnd.apple.mpegurl");

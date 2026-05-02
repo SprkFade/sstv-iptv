@@ -113,20 +113,31 @@ export function VideoPlayer({ channelId, src, title }: { channelId: number; src:
           lowLatencyMode: false,
           liveSyncDurationCount: 5,
           liveMaxLatencyDurationCount: 14,
-          maxLiveSyncPlaybackRate: 1.25
+          maxLiveSyncPlaybackRate: 1.25,
+          liveDurationInfinity: true,
+          backBufferLength: 30,
+          liveBackBufferLength: 30,
+          manifestLoadingMaxRetry: 10,
+          levelLoadingMaxRetry: 10,
+          fragLoadingMaxRetry: 10,
+          manifestLoadingRetryDelay: 1000,
+          levelLoadingRetryDelay: 1000,
+          fragLoadingRetryDelay: 1000
         });
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!data.fatal) return;
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveries < 5) {
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveries < 12) {
             networkRecoveries += 1;
             console.warn("Recovering FFmpeg HLS network error", data);
             hls?.startLoad(-1);
             return;
           }
-          if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 3) {
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 12) {
             mediaRecoveries += 1;
             console.warn("Recovering FFmpeg HLS media error", data);
             hls?.recoverMediaError();
+            hls?.startLoad(-1);
+            requestPlayback();
             return;
           }
           hlsError = true;
