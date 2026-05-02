@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb, setSetting, setting } from "../db/database.js";
 import { getRefreshProgress, startRefreshGuide } from "../ingest/refresh.js";
 import { plexAdminStatus } from "../services/plex.js";
+import { getActiveStreamMonitor } from "./stream.js";
 
 export const adminRouter = Router();
 
@@ -88,4 +89,8 @@ adminRouter.get("/users", (_req, res) => {
     )
     .all();
   res.json({ users: rows });
+});
+
+adminRouter.get("/streams", (_req, res) => {
+  res.json(getActiveStreamMonitor());
 });

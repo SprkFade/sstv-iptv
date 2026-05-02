@@ -11,6 +11,7 @@ import type { AuthedRequest } from "../types/app.js";
 export const streamRouter = Router();
 
 type HlsSession = {
+  clients: Map<string, HlsClientStats>;
   dir: string;
   events: Array<{ at: string; message: string }>;
   exited: boolean;
@@ -36,6 +37,25 @@ type HlsSession = {
 
 type HlsMode = "normal" | "videoOnly";
 type HlsInputMode = "ffmpeg-direct" | "node-pipe";
+type HlsRequestKind = "playlist" | "segment";
+
+type HlsClientStats = {
+  id: string;
+  bytesServed: number;
+  firstSeen: number;
+  ip: string;
+  lastPlaylistAt: number | null;
+  lastRequestKind: HlsRequestKind;
+  lastSeen: number;
+  lastSegmentAt: number | null;
+  lastSegmentName: string;
+  playlistRequests: number;
+  role: string;
+  segmentRequests: number;
+  userAgent: string;
+  userId: number | null;
+  username: string;
+};
 
 type HlsRuntimeSettings = {
   inputMode: HlsInputMode;
@@ -47,6 +67,7 @@ type HlsRuntimeSettings = {
 const hlsSessions = new Map<number, HlsSession>();
 const hlsFallbackModes = new Map<number, { mode: HlsMode; streamUrl: string }>();
 const HLS_IDLE_TIMEOUT_MS = 30 * 1000;
+const HLS_CLIENT_ACTIVE_MS = 45 * 1000;
 const FFMPEG_NORMAL_PROBE_OPTIONS = [
   "-analyzeduration", "8000000",
   "-probesize", "8000000",
@@ -166,6 +187,73 @@ function appendStderr(current: string, message: string) {
 
 function recordSessionEvent(session: HlsSession, message: string) {
   session.events = [...session.events, { at: new Date().toISOString(), message }].slice(-STREAM_EVENT_BUFFER_LENGTH);
+}
+
+function shortClientId(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash).toString(36).padStart(6, "0").slice(0, 6);
+}
+
+function clientIp(req: AuthedRequest) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.trim()) return forwarded.split(",")[0].trim();
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function pruneSessionClients(session: HlsSession, now = Date.now()) {
+  for (const [key, client] of session.clients) {
+    if (now - client.lastSeen > HLS_CLIENT_ACTIVE_MS) session.clients.delete(key);
+  }
+}
+
+function recordHlsClientRequest(
+  req: AuthedRequest,
+  session: HlsSession,
+  kind: HlsRequestKind,
+  segmentName = "",
+  bytesServed = 0
+) {
+  const now = Date.now();
+  pruneSessionClients(session, now);
+  const ip = clientIp(req);
+  const userAgent = req.headers["user-agent"]?.toString() || "unknown";
+  const userId = req.user?.id ?? null;
+  const username = req.user?.username ?? "unknown";
+  const key = `${userId ?? "anon"}|${ip}|${userAgent}`;
+  const existing = session.clients.get(key);
+  const client: HlsClientStats = existing ?? {
+    id: shortClientId(key),
+    bytesServed: 0,
+    firstSeen: now,
+    ip,
+    lastPlaylistAt: null,
+    lastRequestKind: kind,
+    lastSeen: now,
+    lastSegmentAt: null,
+    lastSegmentName: "",
+    playlistRequests: 0,
+    role: req.user?.role ?? "unknown",
+    segmentRequests: 0,
+    userAgent,
+    userId,
+    username
+  };
+
+  client.lastSeen = now;
+  client.lastRequestKind = kind;
+  client.bytesServed += bytesServed;
+  if (kind === "playlist") {
+    client.playlistRequests += 1;
+    client.lastPlaylistAt = now;
+  } else {
+    client.segmentRequests += 1;
+    client.lastSegmentAt = now;
+    client.lastSegmentName = segmentName;
+  }
+  session.clients.set(key, client);
 }
 
 function hasMalformedEac3Audio(stderr: string) {
@@ -404,6 +492,83 @@ function buildTrace(session: HlsSession, files: Array<{ name: string; size: numb
   };
 }
 
+export function getActiveStreamMonitor() {
+  const now = Date.now();
+  const channelIds = [...hlsSessions.keys()];
+  const channelRows = channelIds.length
+    ? getDb()
+      .prepare(
+        `SELECT id, display_name, group_title, channel_number
+         FROM channels
+         WHERE id IN (${channelIds.map(() => "?").join(",")})`
+      )
+      .all(...channelIds) as Array<{ id: number; display_name: string; group_title: string; channel_number: number | null }>
+    : [];
+  const channelById = new Map(channelRows.map((channel) => [channel.id, channel]));
+
+  const streams = [...hlsSessions.entries()]
+    .map(([channelId, session]) => {
+      pruneSessionClients(session, now);
+      const channel = channelById.get(channelId);
+      const latestSegmentAgeMs = latestCompleteSegmentAgeMs(session);
+      const clients = [...session.clients.values()]
+        .filter((client) => now - client.lastSeen <= HLS_CLIENT_ACTIVE_MS)
+        .sort((a, b) => b.lastSeen - a.lastSeen)
+        .map((client) => ({
+          id: client.id,
+          bytesServed: client.bytesServed,
+          firstSeen: new Date(client.firstSeen).toISOString(),
+          ip: client.ip,
+          lastPlaylistAt: client.lastPlaylistAt ? new Date(client.lastPlaylistAt).toISOString() : null,
+          lastRequestKind: client.lastRequestKind,
+          lastSeen: new Date(client.lastSeen).toISOString(),
+          lastSeenAgeMs: now - client.lastSeen,
+          lastSegmentAt: client.lastSegmentAt ? new Date(client.lastSegmentAt).toISOString() : null,
+          lastSegmentName: client.lastSegmentName,
+          playlistRequests: client.playlistRequests,
+          role: client.role,
+          segmentRequests: client.segmentRequests,
+          userAgent: client.userAgent,
+          userId: client.userId,
+          username: client.username
+        }));
+
+      return {
+        active: !session.exited,
+        channelId,
+        channelName: channel?.display_name ?? `Channel ${channelId}`,
+        channelNumber: channel?.channel_number ?? null,
+        clientCount: clients.length,
+        clients,
+        exitCode: session.exitCode,
+        groupTitle: channel?.group_title ?? "",
+        inputBytes: session.inputBytes,
+        inputMode: session.inputMode,
+        lastAccess: new Date(session.lastAccess).toISOString(),
+        latestSegmentAgeMs,
+        mode: session.mode,
+        playlistRequests: session.requestStats.playlist,
+        providerConnectionCount: !session.exited ? 1 : 0,
+        runtimeMs: now - session.startedAt,
+        segmentRequests: session.requestStats.segment,
+        startedAt: new Date(session.startedAt).toISOString(),
+        tempFileCount: fs.existsSync(session.dir)
+          ? fs.readdirSync(session.dir).filter((name) => name.endsWith(".tmp")).length
+          : 0
+      };
+    })
+    .filter((stream) => stream.active || stream.clientCount > 0)
+    .sort((a, b) => b.clientCount - a.clientCount || a.channelName.localeCompare(b.channelName));
+
+  return {
+    activeClientCount: streams.reduce((total, stream) => total + stream.clientCount, 0),
+    providerConnectionCount: streams.reduce((total, stream) => total + stream.providerConnectionCount, 0),
+    refreshedAt: new Date(now).toISOString(),
+    streamCount: streams.length,
+    streams
+  };
+}
+
 function latestCompleteSegmentAgeMs(session: HlsSession) {
   try {
     const latest = fs
@@ -462,6 +627,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   if (runtime.inputMode === "ffmpeg-direct") ffmpeg.stdin.end();
 
   const session: HlsSession = {
+    clients: new Map(),
     dir,
     events: [],
     exited: false,
@@ -626,6 +792,8 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
     } else {
       await waitForFile(filePath, 10_000);
     }
+    const servedBytes = await fs.promises.stat(filePath).then((stat) => stat.size).catch(() => 0);
+    recordHlsClientRequest(req, session, file === "index.m3u8" ? "playlist" : "segment", file === "index.m3u8" ? "" : file, servedBytes);
 
     res.setHeader("cache-control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.setHeader("pragma", "no-cache");

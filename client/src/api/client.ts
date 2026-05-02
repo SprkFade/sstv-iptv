@@ -110,6 +110,55 @@ export interface StreamStatus {
   };
 }
 
+export interface StreamMonitorClient {
+  id: string;
+  bytesServed: number;
+  firstSeen: string;
+  ip: string;
+  lastPlaylistAt: string | null;
+  lastRequestKind: "playlist" | "segment";
+  lastSeen: string;
+  lastSeenAgeMs: number;
+  lastSegmentAt: string | null;
+  lastSegmentName: string;
+  playlistRequests: number;
+  role: string;
+  segmentRequests: number;
+  userAgent: string;
+  userId: number | null;
+  username: string;
+}
+
+export interface StreamMonitorStream {
+  active: boolean;
+  channelId: number;
+  channelName: string;
+  channelNumber: number | null;
+  clientCount: number;
+  clients: StreamMonitorClient[];
+  exitCode: number | null;
+  groupTitle: string;
+  inputBytes: number;
+  inputMode: "ffmpeg-direct" | "node-pipe";
+  lastAccess: string;
+  latestSegmentAgeMs: number | null;
+  mode: "normal" | "videoOnly";
+  playlistRequests: number;
+  providerConnectionCount: number;
+  runtimeMs: number;
+  segmentRequests: number;
+  startedAt: string;
+  tempFileCount: number;
+}
+
+export interface StreamMonitor {
+  activeClientCount: number;
+  providerConnectionCount: number;
+  refreshedAt: string;
+  streamCount: number;
+  streams: StreamMonitorStream[];
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: "include",
@@ -204,5 +253,6 @@ export const api = {
   refresh: () => request<{ started: boolean; progress: RefreshProgress }>("/api/admin/refresh", { method: "POST" }),
   refreshStatus: () => request<RefreshProgress>("/api/admin/refresh-status"),
   refreshRuns: () => request<{ runs: Array<Record<string, string | number | null>> }>("/api/admin/refresh-runs"),
-  users: () => request<{ users: Array<Record<string, string | number | null>> }>("/api/admin/users")
+  users: () => request<{ users: Array<Record<string, string | number | null>> }>("/api/admin/users"),
+  streams: () => request<StreamMonitor>("/api/admin/streams")
 };
