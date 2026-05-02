@@ -15,6 +15,25 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function createPlaybackSessionId() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+}
+
+function releaseStreamClient(channelId: number, clientSession: string) {
+  const url = `/api/stream/${channelId}/hls/release?clientSession=${encodeURIComponent(clientSession)}`;
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon(url, new Blob([], { type: "application/json" }));
+    return;
+  }
+  void fetch(url, {
+    method: "POST",
+    credentials: "include",
+    keepalive: true
+  }).catch(() => {
+    // Best-effort release. The server timeout handles missed unloads.
+  });
+}
+
 type VideoPlayerProps = {
   channelId: number;
   src: string;
@@ -48,16 +67,19 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
 }
 
 function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
+  const clientSession = useMemo(() => createPlaybackSessionId(), []);
   const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
   const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
-  const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8`, [channelId]);
+  const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8?clientSession=${encodeURIComponent(clientSession)}`, [channelId, clientSession]);
   const transcodeStatusSrc = useMemo(() => `/api/stream/${channelId}/hls/status`, [channelId]);
   const [preparedHlsSrc, setPreparedHlsSrc] = useState("");
 
   useEffect(() => {
     let disposed = false;
+    const release = () => releaseStreamClient(channelId, clientSession);
+    window.addEventListener("pagehide", release);
     setPreparedHlsSrc("");
-    fetch(`${transcodeHlsSrc}?prepare=1&_=${Date.now()}`, { cache: "no-store" })
+    fetch(`${transcodeHlsSrc}&prepare=1&_=${Date.now()}`, { cache: "no-store" })
       .then(() => {
         if (!disposed) setPreparedHlsSrc(transcodeHlsSrc);
       })
@@ -66,8 +88,10 @@ function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
       });
     return () => {
       disposed = true;
+      window.removeEventListener("pagehide", release);
+      release();
     };
-  }, [transcodeHlsSrc]);
+  }, [channelId, clientSession, transcodeHlsSrc]);
 
   return (
     <div className="overflow-hidden rounded-md border border-line bg-black">
@@ -81,7 +105,7 @@ function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
       />
       <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-black p-3 text-xs text-white/70">
         <span className="font-semibold text-white">Native mobile playback v4 autoloads the stream</span>
-        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={`${transcodeHlsSrc}?prepare=1`} target="_blank" rel="noreferrer">
+        <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={`${transcodeHlsSrc}&prepare=1`} target="_blank" rel="noreferrer">
           HLS <ExternalLink size={14} />
         </a>
         <a className="inline-flex min-h-9 items-center gap-1 rounded-md border border-white/20 px-2 font-semibold" href={transcodeStatusSrc} target="_blank" rel="noreferrer">
@@ -103,6 +127,7 @@ function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
 
 function ManagedVideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const clientSession = useMemo(() => createPlaybackSessionId(), []);
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("Preparing stream...");
@@ -110,7 +135,7 @@ function ManagedVideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
   const mobile = false;
   const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
   const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
-  const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8`, [channelId]);
+  const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8?clientSession=${encodeURIComponent(clientSession)}`, [channelId, clientSession]);
   const transcodeStatusSrc = useMemo(() => `/api/stream/${channelId}/hls/status`, [channelId]);
 
   useEffect(() => {
@@ -142,6 +167,7 @@ function ManagedVideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     let softRecoveries = 0;
     let hardRecoveries = 0;
     let wakeLock: ScreenWakeLockSentinel | null = null;
+    const release = () => releaseStreamClient(channelId, clientSession);
 
     const trace = (message: string) => {
       onTrace?.(`${new Date().toLocaleTimeString()} ${message}`);
@@ -201,7 +227,7 @@ function ManagedVideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       while (!disposed && Date.now() - started < 30_000) {
         prepareAbort = new AbortController();
         try {
-          const response = await fetch(`${transcodeHlsSrc}?prepare=1&_=${Date.now()}`, {
+          const response = await fetch(`${transcodeHlsSrc}&prepare=1&_=${Date.now()}`, {
             cache: "no-store",
             signal: prepareAbort.signal
           });
@@ -342,6 +368,7 @@ function ManagedVideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
     video.addEventListener("waiting", scheduleStallRecovery);
     video.addEventListener("stalled", scheduleStallRecovery);
     document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", release);
 
     void (async () => {
       try {
@@ -486,8 +513,10 @@ function ManagedVideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
       video.removeEventListener("waiting", scheduleStallRecovery);
       video.removeEventListener("stalled", scheduleStallRecovery);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", release);
+      release();
     };
-  }, [mobile, onTrace, retryKey, transcodeHlsSrc]);
+  }, [channelId, clientSession, mobile, onTrace, retryKey, transcodeHlsSrc]);
 
   return (
     <div className="overflow-hidden rounded-md border border-line bg-black">

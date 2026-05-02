@@ -84,8 +84,8 @@ type HlsRuntimeSettings = {
 
 const hlsSessions = new Map<number, HlsSession>();
 const hlsFallbackModes = new Map<number, { mode: HlsMode; streamUrl: string }>();
-const HLS_IDLE_TIMEOUT_MS = 30 * 1000;
-const HLS_CLIENT_ACTIVE_MS = 45 * 1000;
+const HLS_IDLE_TIMEOUT_MS = 15 * 1000;
+const HLS_CLIENT_ACTIVE_MS = 15 * 1000;
 const HLS_CLIENT_STARTUP_GRACE_MS = 15 * 1000;
 const HLS_SEGMENT_SECONDS = 2;
 const HLS_LIVE_SEGMENT_COUNT = 60;
@@ -232,6 +232,22 @@ function clientIp(req: AuthedRequest) {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
 
+function hlsClientSessionId(req: AuthedRequest) {
+  const value = req.query.clientSession;
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string") return "";
+  return /^[A-Za-z0-9_-]{8,80}$/.test(raw) ? raw : "";
+}
+
+function hlsClientKey(req: AuthedRequest) {
+  const sessionId = hlsClientSessionId(req);
+  if (sessionId) return `session|${sessionId}`;
+  const ip = clientIp(req);
+  const userAgent = req.headers["user-agent"]?.toString() || "unknown";
+  const userId = req.user?.id ?? null;
+  return `${userId ?? "anon"}|${ip}|${userAgent}`;
+}
+
 function pruneSessionClients(session: HlsSession, now = Date.now()) {
   for (const [key, client] of session.clients) {
     if (now - client.lastSeen > HLS_CLIENT_ACTIVE_MS) session.clients.delete(key);
@@ -268,7 +284,7 @@ function recordHlsClientRequest(
   const userAgent = req.headers["user-agent"]?.toString() || "unknown";
   const userId = req.user?.id ?? null;
   const username = req.user?.username ?? "unknown";
-  const key = `${userId ?? "anon"}|${ip}|${userAgent}`;
+  const key = hlsClientKey(req);
   const existing = session.clients.get(key);
   const client: HlsClientStats = existing ?? {
     id: shortClientId(key),
@@ -300,6 +316,21 @@ function recordHlsClientRequest(
     client.lastSegmentName = segmentName;
   }
   session.clients.set(key, client);
+}
+
+function releaseHlsClient(req: AuthedRequest, session: HlsSession) {
+  const key = hlsClientKey(req);
+  if (!session.clients.delete(key)) return false;
+  recordSessionEvent(session, `Released playback client ${shortClientId(key)}.`);
+  return true;
+}
+
+function rewritePlaylistForClientSession(playlist: string, clientSession: string) {
+  if (!clientSession) return playlist;
+  return playlist
+    .split(/\r?\n/)
+    .map((line) => (/^segment_\d{5}\.ts$/.test(line.trim()) ? `${line.trim()}?clientSession=${encodeURIComponent(clientSession)}` : line))
+    .join("\n");
 }
 
 function hasMalformedEac3Audio(stderr: string) {
@@ -864,7 +895,7 @@ setInterval(() => {
     }
     if (now - session.lastAccess > HLS_IDLE_TIMEOUT_MS) stopHlsSession(channelId);
   }
-}, 30_000).unref();
+}, 5_000).unref();
 
 streamRouter.get("/:channelId/hls/status", async (req: AuthedRequest, res) => {
   const channelId = Number(req.params.channelId);
@@ -912,6 +943,23 @@ streamRouter.get("/:channelId/hls/status", async (req: AuthedRequest, res) => {
     trace: buildTrace(session, files, playlist),
     stderr: redactStreamDetails(sanitizeFfmpegStderrForStatus(session.stderr), session.streamUrl)
   });
+});
+
+streamRouter.post("/:channelId/hls/release", (req: AuthedRequest, res) => {
+  const channelId = Number(req.params.channelId);
+  if (!Number.isInteger(channelId)) return res.status(400).json({ error: "Invalid channel id" });
+
+  const session = hlsSessions.get(channelId);
+  if (!session) return res.json({ ok: true, stopped: false });
+
+  releaseHlsClient(req, session);
+  if (shouldStopInactivePlaybackSession(session)) {
+    recordSessionEvent(session, "No active segment clients remain after player release; stopping FFmpeg session.");
+    stopHlsSession(channelId);
+    return res.json({ ok: true, stopped: true });
+  }
+
+  return res.json({ ok: true, stopped: false });
 });
 
 streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) => {
@@ -974,6 +1022,8 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
     res.setHeader("x-accel-buffering", "no");
     if (file.endsWith(".m3u8")) {
       res.type("application/vnd.apple.mpegurl");
+      const playlist = await fs.promises.readFile(filePath, "utf8");
+      return res.send(rewritePlaylistForClientSession(playlist, hlsClientSessionId(req)));
     } else {
       res.type("video/mp2t");
     }

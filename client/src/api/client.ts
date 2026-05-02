@@ -261,6 +261,8 @@ export const api = {
     request<StreamStatus>(`/api/stream/${id}/hls/status?ensure=${ensure ? "1" : "0"}&_=${Date.now()}`, {
       cache: "no-store"
     }),
+  releaseStream: (id: number, clientSession: string) =>
+    request<{ ok: true; stopped: boolean }>(`/api/stream/${id}/hls/release?clientSession=${encodeURIComponent(clientSession)}`, { method: "POST" }),
   settings: () => request<{
     xcBaseUrl: string;
     xcUsername: string;
