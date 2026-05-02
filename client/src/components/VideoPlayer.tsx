@@ -169,6 +169,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
     let playlistFragmentLagRecoveries = 0;
     let softRecoveries = 0;
     let hardRecoveries = 0;
+    let nativeGapRecoveries = 0;
     let wakeLock: ScreenWakeLockSentinel | null = null;
     const release = () => releaseStreamClient(channelId, clientSession);
 
@@ -178,6 +179,20 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
     const playerState = () => (
       `t=${video.currentTime.toFixed(1)} ready=${video.readyState} network=${video.networkState} buffered=${formatRanges(video.buffered)} seekable=${formatRanges(video.seekable)}`
     );
+    const bufferedGapTarget = () => {
+      const current = video.currentTime;
+      const ranges = video.buffered;
+      for (let index = 0; index < ranges.length; index += 1) {
+        const start = ranges.start(index);
+        const end = ranges.end(index);
+        const nextStart = index + 1 < ranges.length ? ranges.start(index + 1) : null;
+        if (current < start && start - current <= 20) return start + 0.1;
+        if (current >= start && current <= end && nextStart !== null && end - current <= 1 && nextStart - current <= 20) {
+          return nextStart + 0.1;
+        }
+      }
+      return null;
+    };
     const setPlaybackError = (message: string) => {
       trace(`error: ${message} (${playerState()})`);
       if (!disposed) setError(message);
@@ -276,6 +291,16 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
           });
       }
     };
+    const jumpNativeHlsGap = (reason: string) => {
+      if (disposed || hls || nativeGapRecoveries >= 8) return false;
+      const target = bufferedGapTarget();
+      if (target === null || !Number.isFinite(target)) return false;
+      nativeGapRecoveries += 1;
+      trace(`native HLS gap recovery ${nativeGapRecoveries}/8: ${reason}; seeking to ${target.toFixed(1)} (${playerState()})`);
+      video.currentTime = target;
+      requestPlayback();
+      return true;
+    };
     const clearStallTimer = () => {
       if (stallTimer) window.clearTimeout(stallTimer);
       stallTimer = undefined;
@@ -334,10 +359,16 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
     const scheduleStallRecovery = () => {
       if (mobile) return;
       trace(`video stalled/waiting; recovery scheduled (${playerState()})`);
+      if (jumpNativeHlsGap("buffer gap detected")) return;
       clearStallTimer();
-      stallTimer = window.setTimeout(recoverFromStall, 8000);
+      stallTimer = window.setTimeout(recoverFromStall, hls ? 8000 : 2500);
     };
     const onVideoError = () => {
+      if (jumpNativeHlsGap("media error near buffered gap")) return;
+      if (!hls && hardRecoveries < 2) {
+        hardResetPlayer("native HLS media error");
+        return;
+      }
       if (!hlsError) setPlaybackError("The browser could not decode the FFmpeg HLS stream.");
     };
     const onPlaying = () => {
@@ -355,6 +386,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
         lastProgressAt = Date.now();
         lastVideoTime = video.currentTime;
         softRecoveries = 0;
+        nativeGapRecoveries = 0;
       }
       clearStallTimer();
     };
