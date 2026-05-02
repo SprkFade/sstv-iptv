@@ -133,6 +133,13 @@ export function HomePage() {
   const guideDefaultLookbackMinutes = compactGuide ? COMPACT_GUIDE_DEFAULT_LOOKBACK_MINUTES : GUIDE_DEFAULT_LOOKBACK_MINUTES;
   const defaultGuideScrollLeft = Math.max(0, initialNowOffset - guideDefaultLookbackMinutes * MINUTE_WIDTH);
   const desktopDefaultGuideScrollLeft = Math.max(0, initialNowOffset - GUIDE_DEFAULT_LOOKBACK_MINUTES * MINUTE_WIDTH);
+  const syncGuideScrollMetrics = useCallback((scroller: HTMLDivElement | null, scrollLeft = scroller?.scrollLeft ?? 0) => {
+    if (!scroller) return;
+    const channelColumnWidth = compactGuide ? COMPACT_CHANNEL_COLUMN_WIDTH : CHANNEL_COLUMN_WIDTH;
+    const labelMaxWidth = Math.max(120, scroller.clientWidth - channelColumnWidth - 32);
+    scroller.style.setProperty("--guide-scroll-left", `${scrollLeft}px`);
+    scroller.style.setProperty("--guide-label-max-width", `${labelMaxWidth}px`);
+  }, [compactGuide]);
 
   useEffect(() => {
     document.body.classList.add("guide-page-locked");
@@ -235,7 +242,7 @@ export function HomePage() {
           restoredLeft = savedAtNowEdge || savedAtOldDefault ? defaultGuideScrollLeft : savedLeft;
         }
         guideScrollRef.current?.scrollTo({ left: restoredLeft });
-        guideScrollRef.current?.style.setProperty("--guide-scroll-left", `${restoredLeft}px`);
+        syncGuideScrollMetrics(guideScrollRef.current, restoredLeft);
         const selectedChannelId = selectedChannelIdRef.current;
         const selectedRow = selectedChannelId
           ? document.getElementById(`guide-channel-${selectedChannelId}`)
@@ -263,8 +270,7 @@ export function HomePage() {
     const guideScroll = guideScrollRef.current;
     const channelList = channelListRef.current;
     const updateGuideScrollMetrics = () => {
-      if (!guideScroll) return;
-      guideScroll.style.setProperty("--guide-scroll-left", `${guideScroll.scrollLeft}px`);
+      syncGuideScrollMetrics(guideScroll);
     };
     if (guideScroll && guideScroll !== channelList) guideScroll.addEventListener("scroll", remember, { passive: true });
     channelList?.addEventListener("scroll", remember, { passive: true });
@@ -279,7 +285,7 @@ export function HomePage() {
       window.removeEventListener("resize", updateGuideScrollMetrics);
       saveGuideState();
     };
-  }, [saveGuideState]);
+  }, [saveGuideState, syncGuideScrollMetrics]);
 
   useEffect(() => {
     const target = loadMoreRef.current;
@@ -332,7 +338,7 @@ export function HomePage() {
     setHasMore(false);
     setActiveGroup(nextGroup);
     channelListRef.current?.scrollTo({ left: defaultGuideScrollLeft, top: 0 });
-    channelListRef.current?.style.setProperty("--guide-scroll-left", `${defaultGuideScrollLeft}px`);
+    syncGuideScrollMetrics(channelListRef.current, defaultGuideScrollLeft);
     saveGuideState({ activeGroup: nextGroup, scrollY: 0, guideScrollLeft: defaultGuideScrollLeft, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
@@ -344,7 +350,7 @@ export function HomePage() {
     setHasMore(false);
     setFavoritesOnly(next);
     channelListRef.current?.scrollTo({ left: defaultGuideScrollLeft, top: 0 });
-    channelListRef.current?.style.setProperty("--guide-scroll-left", `${defaultGuideScrollLeft}px`);
+    syncGuideScrollMetrics(channelListRef.current, defaultGuideScrollLeft);
     saveGuideState({ favoritesOnly: next, scrollY: 0, guideScrollLeft: defaultGuideScrollLeft, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
@@ -373,7 +379,7 @@ export function HomePage() {
     if (!scroller) return;
     const targetLeft = Math.max(0, currentOffset - guideDefaultLookbackMinutes * MINUTE_WIDTH);
     scroller.scrollTo({ left: targetLeft, top: scroller.scrollTop, behavior: "smooth" });
-    scroller.style.setProperty("--guide-scroll-left", `${targetLeft}px`);
+    syncGuideScrollMetrics(scroller, targetLeft);
     saveGuideState({ guideScrollLeft: targetLeft });
   };
 
@@ -481,7 +487,10 @@ export function HomePage() {
               guideScrollRef.current = node;
             }}
             className="guide-channel-list scrollbar-none h-full overflow-auto overscroll-contain"
-            style={{ "--guide-scroll-left": `${restoredState.current.guideScrollLeft ?? defaultGuideScrollLeft}px` } as CSSProperties}
+            style={{
+              "--guide-scroll-left": `${restoredState.current.guideScrollLeft ?? defaultGuideScrollLeft}px`,
+              "--guide-label-max-width": `calc(100vw - ${channelColumnWidth}px - 4rem)`
+            } as CSSProperties}
           >
           <div className="relative grid" style={{ width: channelColumnWidth + TIMELINE_WIDTH, gridTemplateColumns: guideTemplateColumns }}>
             <div

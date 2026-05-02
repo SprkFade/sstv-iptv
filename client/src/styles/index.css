@@ -122,7 +122,11 @@ select:not([multiple]) {
     calc(var(--guide-scroll-left, 0px) + 12px - var(--program-left, 0px)),
     max(8px, calc(var(--program-width, 0px) - 32px))
   );
-  right: 8px;
+  width: min(
+    var(--guide-label-max-width, 42rem),
+    max(28px, calc(var(--program-width, 0px) - 16px))
+  );
+  max-width: max(28px, calc(var(--program-width, 0px) - 16px));
 }
 
 .guide-program-label-active {
