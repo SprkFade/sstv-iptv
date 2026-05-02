@@ -324,7 +324,7 @@ export function GroupsPage() {
       )}
       {sortModalOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
-          <section className="w-full max-w-md rounded-md border border-line bg-panel p-4 shadow-soft">
+          <section className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col rounded-md border border-line bg-panel p-4 shadow-soft">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold">Default group sort</h2>
@@ -338,7 +338,7 @@ export function GroupsPage() {
                 <X size={17} />
               </button>
             </div>
-            <div className="mt-4 grid gap-2">
+            <div className="mt-4 grid min-h-0 gap-2 overflow-y-auto pr-1 scrollbar-none">
               {prefixOrder.length === 0 ? (
                 <div className="rounded-md border border-line bg-mist p-4 text-sm text-ink/60">
                   No group prefixes were found. Prefixes are detected from group names like US | News.
