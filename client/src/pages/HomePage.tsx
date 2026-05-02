@@ -49,9 +49,13 @@ export function HomePage() {
   const guideScrollRef = useRef<HTMLDivElement | null>(null);
   const initialLoadRef = useRef(true);
   const restoredScrollRef = useRef(false);
+  const selectedChannelIdRef = useRef(restoredState.current.selectedChannelId);
   const [params] = useSearchParams();
 
   const saveGuideState = useCallback((overrides: Partial<GuideState> = {}) => {
+    if (Object.prototype.hasOwnProperty.call(overrides, "selectedChannelId")) {
+      selectedChannelIdRef.current = overrides.selectedChannelId;
+    }
     const state: GuideState = {
       activeGroup,
       favoritesOnly,
@@ -59,6 +63,7 @@ export function HomePage() {
       scrollY: window.scrollY,
       guideScrollLeft: guideScrollRef.current?.scrollLeft ?? 0,
       loadedCount: airing.length,
+      selectedChannelId: selectedChannelIdRef.current,
       updatedAt: Date.now(),
       ...overrides
     };
@@ -111,22 +116,26 @@ export function HomePage() {
 
   useEffect(() => {
     if (restoredScrollRef.current || loading || airing.length === 0) return;
-    restoredScrollRef.current = true;
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         guideScrollRef.current?.scrollTo({ left: restoredState.current.guideScrollLeft ?? 0 });
-        const selectedChannelId = restoredState.current.selectedChannelId;
+        const selectedChannelId = selectedChannelIdRef.current;
         const selectedRow = selectedChannelId
           ? document.getElementById(`guide-channel-${selectedChannelId}`)
           : null;
         if (selectedRow) {
+          restoredScrollRef.current = true;
           selectedRow.scrollIntoView({ block: "center" });
+          selectedChannelIdRef.current = undefined;
+        } else if (selectedChannelId && hasMore && !loadingMore) {
+          loadGuide(airing.length, true).catch(() => undefined);
         } else {
+          restoredScrollRef.current = true;
           window.scrollTo({ top: restoredState.current.scrollY ?? 0 });
         }
       });
     });
-  }, [airing.length, loading]);
+  }, [airing.length, hasMore, loadGuide, loading, loadingMore]);
 
   useEffect(() => {
     let frame = 0;
@@ -184,14 +193,14 @@ export function HomePage() {
   const changeGroup = (group: string) => {
     setActiveGroup(group);
     window.scrollTo({ top: 0 });
-    saveGuideState({ activeGroup: group, scrollY: 0, guideScrollLeft: 0, loadedCount: PAGE_SIZE });
+    saveGuideState({ activeGroup: group, scrollY: 0, guideScrollLeft: 0, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
   const toggleFavoritesOnly = () => {
     const next = !favoritesOnly;
     setFavoritesOnly(next);
     window.scrollTo({ top: 0 });
-    saveGuideState({ favoritesOnly: next, scrollY: 0, guideScrollLeft: 0, loadedCount: PAGE_SIZE });
+    saveGuideState({ favoritesOnly: next, scrollY: 0, guideScrollLeft: 0, loadedCount: PAGE_SIZE, selectedChannelId: undefined });
   };
 
   const rememberBeforeNavigate = (channelId?: number) => {

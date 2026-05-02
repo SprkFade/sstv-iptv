@@ -8,7 +8,7 @@
 @tailwind utilities;
 
 :root {
-  --app-shell-top: 4.5rem;
+  --app-shell-top: 5.5rem;
   --color-ink: 226 232 240;
   --color-mist: 10 14 20;
   --color-panel: 17 24 39;
