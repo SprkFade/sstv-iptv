@@ -67,6 +67,7 @@ export function VideoPlayer({ channelId, src, title, onTrace }: VideoPlayerProps
 }
 
 function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const clientSession = useMemo(() => createPlaybackSessionId(), []);
   const proxySrc = useMemo(() => `/api/stream/${channelId}`, [channelId]);
   const transcodeSrc = useMemo(() => `/api/stream/${channelId}/transcode`, [channelId]);
@@ -93,13 +94,39 @@ function MobileNativeVideoPlayer({ channelId, src, title }: VideoPlayerProps) {
     };
   }, [channelId, clientSession, transcodeHlsSrc]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !preparedHlsSrc) return;
+
+    video.defaultMuted = true;
+    video.muted = true;
+    video.playsInline = true;
+
+    const requestAutoplay = () => {
+      const playRequest = video.play();
+      if (playRequest) void playRequest.catch(() => undefined);
+    };
+
+    video.addEventListener("loadedmetadata", requestAutoplay, { once: true });
+    video.addEventListener("canplay", requestAutoplay, { once: true });
+    window.setTimeout(requestAutoplay, 0);
+
+    return () => {
+      video.removeEventListener("loadedmetadata", requestAutoplay);
+      video.removeEventListener("canplay", requestAutoplay);
+    };
+  }, [preparedHlsSrc]);
+
   return (
     <div className="overflow-hidden rounded-md border border-line bg-black">
       <video
+        ref={videoRef}
         className="aspect-video w-full bg-black"
+        autoPlay
         controls
+        muted
         playsInline
-        preload="metadata"
+        preload="auto"
         src={preparedHlsSrc || undefined}
         title={title}
       />
