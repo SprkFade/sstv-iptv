@@ -67,6 +67,15 @@ export interface RefreshProgress {
   error: string;
 }
 
+export interface StreamStatus {
+  active: boolean;
+  exitCode?: number | null;
+  files: Array<{ name: string; size: number; modified: string }>;
+  playlist?: string;
+  stderr?: string;
+  message?: string;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: "include",
@@ -128,6 +137,7 @@ export const api = {
   favorites: () => request<{ favorites: Channel[] }>("/api/favorites"),
   addFavorite: (id: number) => request<{ ok: true }>(`/api/favorites/${id}`, { method: "POST" }),
   removeFavorite: (id: number) => request<{ ok: true }>(`/api/favorites/${id}`, { method: "DELETE" }),
+  streamStatus: (id: number) => request<StreamStatus>(`/api/stream/${id}/hls/status`),
   settings: () => request<{
     xcBaseUrl: string;
     xcUsername: string;
