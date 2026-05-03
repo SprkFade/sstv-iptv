@@ -194,6 +194,15 @@ function seedSettings() {
   insert.run("ffmpeg_hls_dvr_window_minutes", String(config.ffmpegHlsDvrWindowMinutes));
   insert.run("external_internal_base_url", "http://sstv-iptv:3025");
   insert.run("external_public_base_url", "");
+  insert.run("emby_enabled", "false");
+  insert.run("emby_base_url", "");
+  insert.run("emby_api_key", "");
+  insert.run("emby_refresh_after_provider_refresh", "true");
+  insert.run("emby_refresh_task_id", "");
+  insert.run("emby_refresh_task_name", "");
+  insert.run("emby_last_trigger_status", "");
+  insert.run("emby_last_trigger_message", "");
+  insert.run("emby_last_triggered_at", "");
   insert.run("setup_complete", "false");
 }
 

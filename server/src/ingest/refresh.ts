@@ -5,6 +5,7 @@ import { parseSelectedXmltvPrograms, parseXmltvChannels } from "./xmltv.js";
 import { matchChannels } from "./match.js";
 import { fetchXcChannels, xcXmltvUrl, type XcCredentials } from "./xc.js";
 import { ensureChannelGroups, recalculateChannelNumbers } from "../services/channelGroups.js";
+import { triggerEmbyGuideRefreshAfterProviderRefresh } from "../services/emby.js";
 
 const GUIDE_LOOKBACK_HOURS = 2;
 const GUIDE_LOOKAHEAD_HOURS = 24;
@@ -335,9 +336,20 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
     ).run(counts.channelCount, counts.programCount.count, counts.matchedCount, runId);
 
     setProgress({
+      stage: "Refreshing Emby guide",
+      detail: "Checking whether Emby should be notified."
+    });
+    const embyResult = await triggerEmbyGuideRefreshAfterProviderRefresh();
+    const embyDetail = embyResult
+      ? embyResult.ok
+        ? ` Emby guide refresh was triggered.`
+        : ` Emby guide refresh failed: ${embyResult.message}`
+      : "";
+
+    setProgress({
       active: false,
       stage: "Refresh complete",
-      detail: `${counts.channelCount} channels, ${counts.programCount.count} programs, ${counts.matchedCount} matched.`,
+      detail: `${counts.channelCount} channels, ${counts.programCount.count} programs, ${counts.matchedCount} matched.${embyDetail}`,
       channelCount: counts.channelCount,
       programCount: counts.programCount.count,
       totalProgramCount: counts.programCount.count,

@@ -214,6 +214,27 @@ export interface ExternalProfile {
   updated_at: string;
 }
 
+export interface EmbyIntegrationStatus {
+  enabled: boolean;
+  configured: boolean;
+  refreshAfterProviderRefresh: boolean;
+  baseUrl: string;
+  apiKeySet: boolean;
+  refreshTaskId: string;
+  refreshTaskName: string;
+  lastStatus: string;
+  lastMessage: string;
+  lastTriggeredAt: string;
+}
+
+export interface EmbyTask {
+  id: string;
+  name: string;
+  category: string;
+  state: string;
+  key: string;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     cache: "no-store",
@@ -297,6 +318,7 @@ export const api = {
     externalInternalBaseUrl: string;
     externalPublicBaseUrl: string;
     externalProfiles: ExternalProfile[];
+    emby: EmbyIntegrationStatus;
     plex: { configured: boolean; serverReachable: boolean };
   }>("/api/admin/settings"),
   saveSettings: (body: {
@@ -313,8 +335,16 @@ export const api = {
     ffmpegStaleRestartSeconds: number;
     externalInternalBaseUrl: string;
     externalPublicBaseUrl: string;
+    embyEnabled: boolean;
+    embyBaseUrl: string;
+    embyRefreshAfterProviderRefresh: boolean;
+    embyRefreshTaskId: string;
+    embyRefreshTaskName: string;
+    embyApiKey?: string;
   }) =>
     request<{ ok: true }>("/api/admin/settings", { method: "PUT", body: JSON.stringify(body) }),
+  embyTasks: () => request<{ tasks: EmbyTask[]; suggestedTaskId: string }>("/api/admin/emby/tasks"),
+  triggerEmbyRefresh: () => request<{ ok: true; taskId: string; message: string }>("/api/admin/emby/trigger", { method: "POST" }),
   refresh: () => request<{ started: boolean; progress: RefreshProgress }>("/api/admin/refresh", { method: "POST" }),
   refreshStatus: () => request<RefreshProgress>("/api/admin/refresh-status"),
   refreshRuns: () => request<{ runs: Array<Record<string, string | number | null>> }>("/api/admin/refresh-runs"),

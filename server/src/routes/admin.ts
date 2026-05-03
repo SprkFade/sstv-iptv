@@ -6,6 +6,7 @@ import { plexAdminStatus } from "../services/plex.js";
 import { applyDefaultGroupSort, groupNameSql, listChannelGroups, listGroupPrefixes, recalculateChannelNumbers, saveDefaultGroupPrefixOrder } from "../services/channelGroups.js";
 import { getActiveStreamMonitor } from "./stream.js";
 import { listExternalProfiles, regenerateExternalToken, regenerateExternalXcPassword, updateExternalProfile } from "../services/externalAccess.js";
+import { embyStatus, listEmbyTasks, triggerEmbyGuideRefresh } from "../services/emby.js";
 
 export const adminRouter = Router();
 
@@ -26,6 +27,7 @@ adminRouter.get("/settings", async (_req, res, next) => {
       externalInternalBaseUrl: setting("external_internal_base_url", "http://sstv-iptv:3025"),
       externalPublicBaseUrl: setting("external_public_base_url"),
       externalProfiles: listExternalProfiles(),
+      emby: embyStatus(),
       plex: await plexAdminStatus()
     });
   } catch (error) {
@@ -46,7 +48,13 @@ const settingsSchema = z.object({
   ffmpegStaleRestartSeconds: z.number().int().min(0).max(300).optional().default(30),
   ffmpegHlsDvrWindowMinutes: z.number().int().min(0).max(60).optional().default(20),
   externalInternalBaseUrl: z.string().url().or(z.literal("")).optional().default(""),
-  externalPublicBaseUrl: z.string().url().or(z.literal("")).optional().default("")
+  externalPublicBaseUrl: z.string().url().or(z.literal("")).optional().default(""),
+  embyEnabled: z.boolean().optional().default(false),
+  embyBaseUrl: z.string().url().or(z.literal("")).optional().default(""),
+  embyApiKey: z.string().max(500).optional().default(""),
+  embyRefreshAfterProviderRefresh: z.boolean().optional().default(true),
+  embyRefreshTaskId: z.string().max(200).optional().default(""),
+  embyRefreshTaskName: z.string().max(300).optional().default("")
 });
 
 const groupUpdateSchema = z.object({
@@ -83,7 +91,29 @@ adminRouter.put("/settings", (req, res) => {
   setSetting("ffmpeg_hls_dvr_window_minutes", String(body.ffmpegHlsDvrWindowMinutes));
   setSetting("external_internal_base_url", body.externalInternalBaseUrl);
   setSetting("external_public_base_url", body.externalPublicBaseUrl);
+  setSetting("emby_enabled", String(body.embyEnabled));
+  setSetting("emby_base_url", body.embyBaseUrl);
+  if (body.embyApiKey) setSetting("emby_api_key", body.embyApiKey);
+  setSetting("emby_refresh_after_provider_refresh", String(body.embyRefreshAfterProviderRefresh));
+  setSetting("emby_refresh_task_id", body.embyRefreshTaskId);
+  setSetting("emby_refresh_task_name", body.embyRefreshTaskName);
   res.json({ ok: true });
+});
+
+adminRouter.get("/emby/tasks", async (_req, res, next) => {
+  try {
+    res.json(await listEmbyTasks());
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/emby/trigger", async (_req, res, next) => {
+  try {
+    res.json(await triggerEmbyGuideRefresh());
+  } catch (error) {
+    next(error);
+  }
 });
 
 adminRouter.post("/refresh", async (_req, res, next) => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Activity, Copy, Database, KeyRound, RefreshCw, Server, Users } from "lucide-react";
-import { api, type ExternalProfile, type RefreshProgress } from "../api/client";
+import { api, type EmbyTask, type ExternalProfile, type RefreshProgress } from "../api/client";
 
 type Settings = Awaited<ReturnType<typeof api.settings>>;
 
@@ -61,6 +61,9 @@ export function AdminPage() {
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [xcPassword, setXcPassword] = useState("");
+  const [embyApiKey, setEmbyApiKey] = useState("");
+  const [embyTasks, setEmbyTasks] = useState<EmbyTask[]>([]);
+  const [loadingEmbyTasks, setLoadingEmbyTasks] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<RefreshProgress | null>(null);
   const [now, setNow] = useState(Date.now());
 
@@ -136,6 +139,44 @@ export function AdminPage() {
 
   const setExternalProfiles = (profiles: ExternalProfile[]) => setSettings({ ...settings, externalProfiles: profiles });
 
+  const settingsPayload = () => ({
+    ...settings,
+    xcPassword,
+    embyEnabled: settings.emby.enabled,
+    embyBaseUrl: settings.emby.baseUrl,
+    embyApiKey,
+    embyRefreshAfterProviderRefresh: settings.emby.refreshAfterProviderRefresh,
+    embyRefreshTaskId: settings.emby.refreshTaskId,
+    embyRefreshTaskName: settings.emby.refreshTaskName
+  });
+
+  const discoverEmbyTasks = async () => {
+    setLoadingEmbyTasks(true);
+    setMessage("");
+    setError("");
+    try {
+      await api.saveSettings(settingsPayload());
+      const response = await api.embyTasks();
+      setEmbyTasks(response.tasks);
+      const selected = response.tasks.find((task) => task.id === (settings.emby.refreshTaskId || response.suggestedTaskId));
+      if (selected) {
+        setSettings({
+          ...settings,
+          emby: {
+            ...settings.emby,
+            refreshTaskId: selected.id,
+            refreshTaskName: selected.name
+          }
+        });
+      }
+      setMessage(response.tasks.length ? "Emby tasks loaded." : "No Emby scheduled tasks were returned.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load Emby tasks");
+    } finally {
+      setLoadingEmbyTasks(false);
+    }
+  };
+
   return (
     <div className="grid min-w-0 gap-4">
       <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
@@ -155,8 +196,9 @@ export function AdminPage() {
             setMessage("");
             setError("");
             try {
-              await api.saveSettings({ ...settings, xcPassword });
+              await api.saveSettings(settingsPayload());
               setXcPassword("");
+              setEmbyApiKey("");
               setMessage("Settings saved.");
               await load();
             } catch (err) {
@@ -370,6 +412,118 @@ export function AdminPage() {
                 );
               })}
             </div>
+          </div>
+          <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-line bg-mist p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold">Emby guide refresh</h2>
+                <p className="mt-1 text-sm text-ink/60">Trigger Emby&apos;s Live TV guide task after SSTV IPTV refreshes provider data.</p>
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={settings.emby.enabled}
+                  onChange={(event) => setSettings({ ...settings, emby: { ...settings.emby, enabled: event.target.checked } })}
+                />
+                Enabled
+              </label>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="grid gap-1 text-sm font-medium">
+                Emby server URL
+                <input
+                  className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"
+                  value={settings.emby.baseUrl}
+                  onChange={(event) => setSettings({ ...settings, emby: { ...settings.emby, baseUrl: event.target.value } })}
+                  placeholder="http://emby:8096"
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-medium">
+                Emby API key
+                <input
+                  className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"
+                  type="password"
+                  placeholder={settings.emby.apiKeySet ? "Leave blank to keep current API key" : ""}
+                  value={embyApiKey}
+                  onChange={(event) => setEmbyApiKey(event.target.value)}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-medium">
+                Guide refresh task
+                <select
+                  className="min-h-11 w-full min-w-0 rounded-md border border-line bg-panel py-2 pl-3 text-ink"
+                  value={settings.emby.refreshTaskId}
+                  onChange={(event) => {
+                    const task = embyTasks.find((item) => item.id === event.target.value);
+                    setSettings({
+                      ...settings,
+                      emby: {
+                        ...settings.emby,
+                        refreshTaskId: event.target.value,
+                        refreshTaskName: task?.name ?? settings.emby.refreshTaskName
+                      }
+                    });
+                  }}
+                >
+                  <option value="">{settings.emby.refreshTaskName || "Auto-detect guide refresh task"}</option>
+                  {embyTasks.map((task) => (
+                    <option key={task.id} value={task.id}>{task.name}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex flex-wrap items-end gap-2">
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-3 text-sm font-semibold"
+                  disabled={loadingEmbyTasks}
+                  onClick={discoverEmbyTasks}
+                >
+                  <RefreshCw size={16} className={loadingEmbyTasks ? "animate-spin" : ""} /> Load tasks
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-3 text-sm font-semibold"
+                  onClick={async () => {
+                    setMessage("");
+                    setError("");
+                    try {
+                      await api.saveSettings(settingsPayload());
+                      setEmbyApiKey("");
+                      const response = await api.triggerEmbyRefresh();
+                      setMessage(response.message);
+                      await load();
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Unable to trigger Emby guide refresh");
+                    }
+                  }}
+                >
+                  <RefreshCw size={16} /> Test trigger
+                </button>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+              <label className="inline-flex items-center gap-2 font-semibold">
+                <input
+                  type="checkbox"
+                  checked={settings.emby.refreshAfterProviderRefresh}
+                  onChange={(event) => setSettings({ ...settings, emby: { ...settings.emby, refreshAfterProviderRefresh: event.target.checked } })}
+                />
+                Trigger after provider refresh completes
+              </label>
+              <span className="text-ink/60">
+                {settings.emby.configured ? "Configured" : "Not configured"}
+                {settings.emby.refreshTaskName ? ` · ${settings.emby.refreshTaskName}` : ""}
+              </span>
+            </div>
+            {settings.emby.lastStatus && (
+              <div className="mt-3 rounded-md border border-line bg-panel p-3 text-sm">
+                <div className="font-semibold">Last Emby trigger: {settings.emby.lastStatus}</div>
+                <div className="mt-1 text-ink/60">
+                  {settings.emby.lastTriggeredAt ? `${formatRefreshTimestamp(settings.emby.lastTriggeredAt)} · ` : ""}
+                  {settings.emby.lastMessage}
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <button className="flex min-h-11 items-center gap-2 rounded-md bg-accent px-4 font-semibold text-white">
