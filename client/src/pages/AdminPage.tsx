@@ -166,6 +166,8 @@ export function AdminPage() {
       diagnostic.xmltv_channel_id,
       diagnostic.xmltv_match_name,
       diagnostic.xmltv_match_method,
+      diagnostic.xmltv_candidate_id,
+      diagnostic.xmltv_candidate_name,
       diagnostic.warnings.join(" ")
     ]
       .filter(Boolean)
@@ -883,6 +885,9 @@ export function AdminPage() {
               <div className="mt-3 grid gap-1 text-xs">
                 <div><span className="text-ink/50">Provider EPG:</span> {diagnostic.tvg_id || "none"}</div>
                 <div><span className="text-ink/50">XMLTV:</span> {diagnostic.xmltv_channel_id || "none"}{diagnostic.xmltv_match_name ? ` · ${diagnostic.xmltv_match_name}` : ""}</div>
+                {diagnostic.xmltv_candidate_id && (
+                  <div><span className="text-ink/50">Rejected candidate:</span> {diagnostic.xmltv_candidate_id} · {diagnostic.xmltv_candidate_name || "Unnamed"} {formatMatchScore(diagnostic.xmltv_candidate_score)} gap {formatMatchScore(diagnostic.xmltv_candidate_gap)}</div>
+                )}
               </div>
               {diagnostic.warnings.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1">
@@ -923,6 +928,11 @@ export function AdminPage() {
                   <td>
                     <div className="max-w-64 break-words text-sm">{diagnostic.xmltv_channel_id || "none"}</div>
                     <div className="max-w-64 truncate text-sm text-ink/55">{diagnostic.xmltv_match_name || ""}</div>
+                    {diagnostic.xmltv_candidate_id && (
+                      <div className="mt-1 max-w-64 break-words text-xs text-gold">
+                        Candidate: {diagnostic.xmltv_candidate_id} · {diagnostic.xmltv_candidate_name || "Unnamed"} {formatMatchScore(diagnostic.xmltv_candidate_score)} · gap {formatMatchScore(diagnostic.xmltv_candidate_gap)}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <span className={`rounded-md px-2 py-1 text-xs font-bold ${

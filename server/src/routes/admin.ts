@@ -195,6 +195,10 @@ adminRouter.get("/epg-diagnostics", (_req, res) => {
               channels.xmltv_match_method,
               channels.xmltv_match_score,
               channels.xmltv_match_name,
+              channels.xmltv_candidate_id,
+              channels.xmltv_candidate_score,
+              channels.xmltv_candidate_gap,
+              channels.xmltv_candidate_name,
               COALESCE(channel_groups.enabled, 0) AS group_enabled,
               COALESCE(tvg_counts.count, 0) AS tvg_id_count,
               COALESCE(xmltv_counts.count, 0) AS xmltv_id_count
@@ -215,9 +219,10 @@ adminRouter.get("/epg-diagnostics", (_req, res) => {
     const method = String(row.xmltv_match_method ?? "");
     const score = Number(row.xmltv_match_score ?? 0);
     if (!row.xmltv_channel_id) warnings.push("unmatched");
+    if (!row.xmltv_channel_id && row.xmltv_candidate_id) warnings.push("fuzzy candidate rejected");
     if (!row.tvg_id) warnings.push("missing provider EPG id");
     if (row.tvg_id && method && method !== "tvg-id") warnings.push("provider EPG id did not match XMLTV id");
-    if (method === "fuzzy") warnings.push(score < 0.82 ? "low confidence fuzzy match" : "fuzzy match");
+    if (method === "fuzzy") warnings.push(score < 0.9 ? "low confidence fuzzy match" : "fuzzy match");
     if (Number(row.tvg_id_count ?? 0) > 1) warnings.push("duplicate provider EPG id");
     if (Number(row.xmltv_id_count ?? 0) > 1) warnings.push("shared XMLTV id");
     if (!row.group_enabled) warnings.push("hidden group");

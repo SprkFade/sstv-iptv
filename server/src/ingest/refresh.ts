@@ -251,7 +251,7 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
       detail: `Matching ${sourceChannels.length} channels with ${xmltvChannels.length} XMLTV entries.`,
       channelCount: sourceChannels.length
     });
-    const { matches, matchedCount } = matchChannels(sourceChannels, xmltvChannels);
+    const { matches, candidates, matchedCount } = matchChannels(sourceChannels, xmltvChannels);
     setProgress({
       stage: "Saving guide data",
       detail: `Saving ${sourceChannels.length} channels before scanning upcoming program entries.`,
@@ -279,13 +279,15 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
           `INSERT INTO channels
          (source_id, tvg_id, tvg_name, display_name, logo_url, group_title, stream_url,
           xmltv_channel_id, xmltv_match_method, xmltv_match_score, xmltv_match_name,
+          xmltv_candidate_id, xmltv_candidate_score, xmltv_candidate_gap, xmltv_candidate_name,
           channel_number, sort_order, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
         );
         const updateChannel = ingestDb.prepare(
           `UPDATE channels
          SET source_id = ?, tvg_id = ?, tvg_name = ?, display_name = ?, logo_url = ?, group_title = ?,
              stream_url = ?, xmltv_channel_id = ?, xmltv_match_method = ?, xmltv_match_score = ?, xmltv_match_name = ?,
+             xmltv_candidate_id = ?, xmltv_candidate_score = ?, xmltv_candidate_gap = ?, xmltv_candidate_name = ?,
              channel_number = ?, sort_order = ?,
              enabled = 1, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`
@@ -299,6 +301,7 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
         for (let index = 0; index < sourceChannels.length; index += 1) {
           const channel = sourceChannels[index];
           const xmltvMatch = matches.get(index);
+          const xmltvCandidate = xmltvMatch?.candidate ?? candidates.get(index);
           const matchedXmltvChannel = xmltvMatch?.channel;
           const sourceId = channel.sourceId ?? "";
           const existing = findChannel.get(sourceId, channel.streamUrl, sourceId) as
@@ -317,6 +320,10 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
             xmltvMatch?.method ?? "",
             xmltvMatch?.score ?? null,
             matchedXmltvChannel?.displayName ?? "",
+            xmltvCandidate && xmltvCandidate.channel.id !== matchedXmltvChannel?.id ? xmltvCandidate.channel.id : "",
+            xmltvCandidate && xmltvCandidate.channel.id !== matchedXmltvChannel?.id ? xmltvCandidate.score : null,
+            xmltvCandidate && xmltvCandidate.channel.id !== matchedXmltvChannel?.id ? xmltvCandidate.scoreGap : null,
+            xmltvCandidate && xmltvCandidate.channel.id !== matchedXmltvChannel?.id ? xmltvCandidate.channel.displayName : "",
             channel.channelNumber,
             channel.sortOrder
           ] as const;

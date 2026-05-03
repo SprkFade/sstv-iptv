@@ -276,6 +276,10 @@ export interface EpgDiagnostic {
   xmltv_match_method: "tvg-id" | "exact-name" | "normalized-name" | "fuzzy" | "" | null;
   xmltv_match_score: number | null;
   xmltv_match_name: string | null;
+  xmltv_candidate_id: string | null;
+  xmltv_candidate_score: number | null;
+  xmltv_candidate_gap: number | null;
+  xmltv_candidate_name: string | null;
   group_enabled: 0 | 1;
   tvg_id_count: number;
   xmltv_id_count: number;
