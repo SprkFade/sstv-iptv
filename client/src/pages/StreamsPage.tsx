@@ -162,6 +162,11 @@ export function StreamsPage() {
                         <span className="rounded-md border border-line px-2 py-1 text-xs font-bold text-ink/70">
                           {stream.outputType === "mpegts" ? "MPEG-TS" : "HLS"}
                         </span>
+                        {stream.providerProfileName && (
+                          <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-xs font-bold text-accent">
+                            Provider {stream.providerProfileName}
+                          </span>
+                        )}
                         {stream.mode === "videoOnly" && <span className="rounded-md bg-gold/20 px-2 py-1 text-xs font-bold text-gold">Video only</span>}
                         {stream.mode === "audioOnly" && <span className="rounded-md bg-accent/15 px-2 py-1 text-xs font-bold text-accent">Audio only</span>}
                       </div>
@@ -215,6 +220,11 @@ export function StreamsPage() {
                             {client.source === "external" && (
                               <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent">
                                 {client.externalProfileName ?? "External"}
+                              </span>
+                            )}
+                            {client.providerProfileName && (
+                              <span className="rounded-md border border-line bg-panel px-2 py-0.5 text-xs font-semibold text-ink/70">
+                                Provider {client.providerProfileName}
                               </span>
                             )}
                             <span className="rounded-md border border-line px-2 py-0.5 text-xs text-ink/60">{client.lastRequestKind}</span>

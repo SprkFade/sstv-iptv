@@ -7,6 +7,14 @@ import { applyDefaultGroupSort, groupNameSql, listChannelGroups, listGroupPrefix
 import { getActiveStreamMonitor } from "./stream.js";
 import { listExternalProfiles, regenerateExternalToken, regenerateExternalXcPassword, updateExternalProfile } from "../services/externalAccess.js";
 import { embyStatus, listEmbyTasks, triggerEmbyGuideRefresh } from "../services/emby.js";
+import {
+  createGeneratedProviderProfile,
+  deleteProviderProfile,
+  listProviderProfiles,
+  refreshProviderAccount,
+  syncPrimaryProviderProfile,
+  updateProviderProfile
+} from "../services/providerProfiles.js";
 
 export const adminRouter = Router();
 
@@ -27,6 +35,7 @@ adminRouter.get("/settings", async (_req, res, next) => {
       externalInternalBaseUrl: setting("external_internal_base_url", "http://sstv-iptv:3025"),
       externalPublicBaseUrl: setting("external_public_base_url"),
       externalProfiles: listExternalProfiles(),
+      providerProfiles: listProviderProfiles(),
       emby: embyStatus(),
       plex: await plexAdminStatus()
     });
@@ -76,11 +85,29 @@ const externalProfileUpdateSchema = z.object({
   xcUsername: z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9_.-]+$/).optional()
 });
 
+const providerProfileUpdateSchema = z.object({
+  enabled: z.boolean().optional(),
+  maxConnections: z.number().int().min(1).max(100).optional(),
+  name: z.string().trim().min(1).max(80).optional(),
+  password: z.string().max(500).optional(),
+  username: z.string().trim().min(1).max(200).optional()
+});
+
+const providerProfileGenerateSchema = z.object({
+  maxConnections: z.number().int().min(1).max(100).optional().default(1),
+  name: z.string().trim().min(1).max(80),
+  passwordPattern: z.string().min(1).max(300),
+  passwordReplacement: z.string().max(300),
+  usernamePattern: z.string().min(1).max(300),
+  usernameReplacement: z.string().max(300)
+});
+
 adminRouter.put("/settings", (req, res) => {
   const body = settingsSchema.parse(req.body);
   setSetting("xc_base_url", body.xcBaseUrl);
   setSetting("xc_username", body.xcUsername);
   if (body.xcPassword) setSetting("xc_password", body.xcPassword);
+  syncPrimaryProviderProfile(body.xcUsername, body.xcPassword || undefined);
   setSetting("xmltv_url", body.xmltvUrl);
   setSetting("refresh_interval_hours", String(body.refreshIntervalHours));
   setSetting("plex_server_identifier", body.plexServerIdentifier);
@@ -180,6 +207,40 @@ adminRouter.post("/external-profiles/:id/regenerate-password", (req, res) => {
   const profile = regenerateExternalXcPassword(Number(req.params.id));
   if (!profile) return res.status(404).json({ error: "External profile not found" });
   res.json({ profile, profiles: listExternalProfiles() });
+});
+
+adminRouter.get("/provider-profiles", (_req, res) => {
+  res.json({ profiles: listProviderProfiles() });
+});
+
+adminRouter.post("/provider-profiles", (req, res) => {
+  const body = providerProfileGenerateSchema.parse(req.body);
+  const profile = createGeneratedProviderProfile(body);
+  res.status(201).json({ profile, profiles: listProviderProfiles() });
+});
+
+adminRouter.put("/provider-profiles/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const body = providerProfileUpdateSchema.parse(req.body);
+  const profile = updateProviderProfile(id, body);
+  if (!profile) return res.status(404).json({ error: "Provider profile not found" });
+  res.json({ profile, profiles: listProviderProfiles() });
+});
+
+adminRouter.delete("/provider-profiles/:id", (req, res) => {
+  const deleted = deleteProviderProfile(Number(req.params.id));
+  if (!deleted) return res.status(404).json({ error: "Provider profile not found or cannot be deleted" });
+  res.json({ ok: true, profiles: listProviderProfiles() });
+});
+
+adminRouter.post("/provider-profiles/:id/check", async (req, res, next) => {
+  try {
+    const profile = await refreshProviderAccount(Number(req.params.id));
+    if (!profile) return res.status(404).json({ error: "Provider profile not found" });
+    res.json({ profile, profiles: listProviderProfiles() });
+  } catch (error) {
+    next(error);
+  }
 });
 
 adminRouter.get("/groups", (_req, res) => {

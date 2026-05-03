@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Activity, Copy, Database, KeyRound, RefreshCw, Server, Users } from "lucide-react";
-import { api, type EmbyTask, type ExternalProfile, type RefreshProgress } from "../api/client";
+import { api, type EmbyTask, type ExternalProfile, type ProviderProfile, type RefreshProgress } from "../api/client";
 
 type Settings = Awaited<ReturnType<typeof api.settings>>;
 
@@ -66,6 +66,14 @@ export function AdminPage() {
   const [loadingEmbyTasks, setLoadingEmbyTasks] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<RefreshProgress | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [providerDraft, setProviderDraft] = useState({
+    maxConnections: 1,
+    name: "Profile 2",
+    passwordPattern: "(.*)",
+    passwordReplacement: "$1",
+    usernamePattern: "(\\d+)$",
+    usernameReplacement: "2"
+  });
 
   const load = async () => {
     const [settingsResult, runResult, userResult, statusResult] = await Promise.allSettled([
@@ -138,6 +146,7 @@ export function AdminPage() {
   };
 
   const setExternalProfiles = (profiles: ExternalProfile[]) => setSettings({ ...settings, externalProfiles: profiles });
+  const setProviderProfiles = (profiles: ProviderProfile[]) => setSettings({ ...settings, providerProfiles: profiles });
 
   const settingsPayload = () => ({
     ...settings,
@@ -224,6 +233,174 @@ export function AdminPage() {
             XMLTV URL (optional)
             <input className="min-h-11 w-full min-w-0 rounded-md border border-line px-3" value={settings.xmltvUrl} onChange={(event) => setSettings({ ...settings, xmltvUrl: event.target.value })} />
           </label>
+          <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-line bg-mist p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold">Provider profiles</h2>
+                <p className="mt-1 text-sm text-ink/60">Upstream XC credentials are used in order. Each active channel stream consumes one connection from the assigned profile.</p>
+              </div>
+              <button
+                type="button"
+                className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line bg-panel px-3 text-sm font-semibold"
+                onClick={async () => {
+                  const results = await Promise.allSettled(settings.providerProfiles.map((profile) => api.checkProviderProfile(profile.id)));
+                  const latest = [...results].reverse().find((result) => result.status === "fulfilled");
+                  if (latest?.status === "fulfilled") setProviderProfiles(latest.value.profiles);
+                  const failed = results.find((result) => result.status === "rejected");
+                  if (failed?.status === "rejected") setError(failed.reason instanceof Error ? failed.reason.message : "Provider account check failed");
+                }}
+              >
+                <RefreshCw size={15} /> Check accounts
+              </button>
+            </div>
+            <div className="mt-3 grid gap-3 xl:grid-cols-2">
+              {settings.providerProfiles.map((profile) => (
+                <article key={profile.id} className={`rounded-md border border-line bg-panel p-3 ${profile.enabled ? "" : "opacity-60"}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-bold">{profile.name}</h3>
+                        {profile.is_primary ? <span className="rounded-md bg-accent/15 px-2 py-1 text-xs font-bold text-accent">Primary</span> : null}
+                        <span className="rounded-md border border-line px-2 py-1 text-xs font-bold text-ink/70">{profile.max_connections} max</span>
+                        {profile.account_days_left !== null && <span className="rounded-md border border-line px-2 py-1 text-xs font-bold text-ink/70">{profile.account_days_left} days left</span>}
+                      </div>
+                      <p className="mt-1 text-sm text-ink/60">
+                        {profile.account_status || "Not checked"}
+                        {profile.last_checked_at ? ` · checked ${formatRefreshTimestamp(profile.last_checked_at)}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <label className="inline-flex items-center gap-2 text-sm font-semibold">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(profile.enabled)}
+                          disabled={Boolean(profile.is_primary)}
+                          onChange={async (event) => {
+                            const response = await api.updateProviderProfile(profile.id, { enabled: event.target.checked });
+                            setProviderProfiles(response.profiles);
+                          }}
+                        />
+                        Enabled
+                      </label>
+                      {!profile.is_primary && (
+                        <button
+                          type="button"
+                          className="rounded-md border border-line px-3 text-sm font-semibold"
+                          onClick={async () => {
+                            const response = await api.deleteProviderProfile(profile.id);
+                            setProviderProfiles(response.profiles);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <label className="grid gap-1 text-sm font-medium">
+                      Name
+                      <input
+                        className="min-h-10 rounded-md border border-line px-3 disabled:opacity-70"
+                        disabled={Boolean(profile.is_primary)}
+                        value={profile.name}
+                        onChange={(event) => setProviderProfiles(settings.providerProfiles.map((item) => item.id === profile.id ? { ...item, name: event.target.value } : item))}
+                        onBlur={async (event) => {
+                          if (profile.is_primary) return;
+                          const response = await api.updateProviderProfile(profile.id, { name: event.target.value });
+                          setProviderProfiles(response.profiles);
+                        }}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium">
+                      Max connections
+                      <input
+                        className="min-h-10 rounded-md border border-line px-3"
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={profile.max_connections}
+                        onChange={(event) => setProviderProfiles(settings.providerProfiles.map((item) => item.id === profile.id ? { ...item, max_connections: Number(event.target.value) } : item))}
+                        onBlur={async (event) => {
+                          const response = await api.updateProviderProfile(profile.id, { maxConnections: Number(event.target.value) });
+                          setProviderProfiles(response.profiles);
+                        }}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium">
+                      Username
+                      <input
+                        className="min-h-10 rounded-md border border-line px-3 disabled:opacity-70"
+                        disabled={Boolean(profile.is_primary)}
+                        value={profile.username}
+                        onChange={(event) => setProviderProfiles(settings.providerProfiles.map((item) => item.id === profile.id ? { ...item, username: event.target.value } : item))}
+                        onBlur={async (event) => {
+                          if (profile.is_primary) return;
+                          const response = await api.updateProviderProfile(profile.id, { username: event.target.value });
+                          setProviderProfiles(response.profiles);
+                        }}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium">
+                      Password
+                      <input
+                        className="min-h-10 rounded-md border border-line px-3 disabled:opacity-70"
+                        disabled={Boolean(profile.is_primary)}
+                        type="password"
+                        value={profile.password}
+                        onChange={(event) => setProviderProfiles(settings.providerProfiles.map((item) => item.id === profile.id ? { ...item, password: event.target.value } : item))}
+                        onBlur={async (event) => {
+                          if (profile.is_primary) return;
+                          const response = await api.updateProviderProfile(profile.id, { password: event.target.value });
+                          setProviderProfiles(response.profiles);
+                        }}
+                      />
+                    </label>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="mt-3 rounded-md border border-line bg-panel p-3">
+              <h3 className="font-bold">Add generated profile</h3>
+              <p className="mt-1 text-sm text-ink/60">Regex replacements run against the primary username and password. JavaScript replacement groups like $1 are supported.</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <label className="grid gap-1 text-sm font-medium">
+                  Name
+                  <input className="min-h-10 rounded-md border border-line px-3" value={providerDraft.name} onChange={(event) => setProviderDraft({ ...providerDraft, name: event.target.value })} />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Max connections
+                  <input className="min-h-10 rounded-md border border-line px-3" type="number" min={1} max={100} value={providerDraft.maxConnections} onChange={(event) => setProviderDraft({ ...providerDraft, maxConnections: Number(event.target.value) })} />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Username regex
+                  <input className="min-h-10 rounded-md border border-line px-3 font-mono" value={providerDraft.usernamePattern} onChange={(event) => setProviderDraft({ ...providerDraft, usernamePattern: event.target.value })} />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Username replacement
+                  <input className="min-h-10 rounded-md border border-line px-3 font-mono" value={providerDraft.usernameReplacement} onChange={(event) => setProviderDraft({ ...providerDraft, usernameReplacement: event.target.value })} />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Password regex
+                  <input className="min-h-10 rounded-md border border-line px-3 font-mono" value={providerDraft.passwordPattern} onChange={(event) => setProviderDraft({ ...providerDraft, passwordPattern: event.target.value })} />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Password replacement
+                  <input className="min-h-10 rounded-md border border-line px-3 font-mono" value={providerDraft.passwordReplacement} onChange={(event) => setProviderDraft({ ...providerDraft, passwordReplacement: event.target.value })} />
+                </label>
+              </div>
+              <button
+                type="button"
+                className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-white"
+                onClick={async () => {
+                  const response = await api.createProviderProfile(providerDraft);
+                  setProviderProfiles(response.profiles);
+                  setProviderDraft({ ...providerDraft, name: `Profile ${response.profiles.length + 1}` });
+                }}
+              >
+                Add provider profile
+              </button>
+            </div>
+          </div>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="grid gap-1 text-sm font-medium">
               Refresh interval hours

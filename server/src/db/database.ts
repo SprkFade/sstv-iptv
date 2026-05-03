@@ -111,6 +111,23 @@ export function migrate() {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS provider_profiles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      username TEXT NOT NULL,
+      password TEXT NOT NULL,
+      max_connections INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      account_status TEXT,
+      account_expires_at TEXT,
+      account_days_left INTEGER,
+      last_checked_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_channels_enabled_group ON channels(enabled, group_title);
     CREATE INDEX IF NOT EXISTS idx_channels_tvg_id ON channels(tvg_id);
     CREATE INDEX IF NOT EXISTS idx_channels_stream_url ON channels(stream_url);
@@ -123,6 +140,7 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_external_profiles_token ON external_profiles(token);
     CREATE INDEX IF NOT EXISTS idx_external_profiles_xc ON external_profiles(xc_username, xc_password);
+    CREATE INDEX IF NOT EXISTS idx_provider_profiles_order ON provider_profiles(enabled, sort_order, id);
   `);
 
   addColumnIfMissing(database, "channels", "channel_number", "INTEGER");
@@ -134,6 +152,7 @@ export function migrate() {
 
   seedSettings();
   seedExternalProfiles();
+  seedProviderProfiles();
   closeInterruptedRefreshRuns();
 }
 
@@ -217,6 +236,23 @@ function seedExternalProfiles() {
   );
   insert.run("Emby", randomCredential(), "emby", randomCredential(12));
   insert.run("Others", randomCredential(), "others", randomCredential(12));
+}
+
+function seedProviderProfiles() {
+  const database = getDb();
+  const count = database.prepare("SELECT COUNT(*) AS count FROM provider_profiles").get() as { count: number };
+  if (count.count > 0) return;
+
+  const username = setting("xc_username");
+  const password = setting("xc_password");
+  if (!username || !password) return;
+
+  database
+    .prepare(
+      `INSERT INTO provider_profiles (name, enabled, is_primary, username, password, max_connections, sort_order)
+       VALUES ('Primary', 1, 1, ?, ?, 1, 0)`
+    )
+    .run(username, password);
 }
 
 export function setting(key: string, fallback = "") {

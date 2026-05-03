@@ -7,7 +7,8 @@ import { Router, type NextFunction, type Response } from "express";
 import { config } from "../config.js";
 import { getDb, setting } from "../db/database.js";
 import { groupNameSql } from "../services/channelGroups.js";
-import type { AuthedRequest } from "../types/app.js";
+import { listProviderProfiles, providerStreamUrl } from "../services/providerProfiles.js";
+import type { AuthedRequest, ProviderProfile } from "../types/app.js";
 
 export const streamRouter = Router();
 
@@ -24,6 +25,9 @@ type HlsSession = {
   lastAccess: number;
   mode: HlsMode;
   process: ChildProcessWithoutNullStreams;
+  providerProfileId: number | null;
+  providerProfileName: string | null;
+  providerProfileUsername: string | null;
   requestStats: {
     playlist: number;
     segment: number;
@@ -33,6 +37,7 @@ type HlsSession = {
   };
   startedAt: number;
   stderr: string;
+  sourceStreamUrl: string;
   streamUrl: string;
 };
 
@@ -48,6 +53,9 @@ type MpegTsSession = {
   lastAccess: number;
   lastInputAt: number | null;
   process: ChildProcessWithoutNullStreams;
+  providerProfileId: number | null;
+  providerProfileName: string | null;
+  providerProfileUsername: string | null;
   startedAt: number;
   stderr: string;
   streamUrl: string;
@@ -87,6 +95,9 @@ type HlsClientStats = {
   lastSegmentAt: number | null;
   lastSegmentName: string;
   playlistRequests: number;
+  providerProfileId: number | null;
+  providerProfileName: string | null;
+  providerProfileUsername: string | null;
   role: string;
   segmentRequests: number;
   source: "browser" | "external";
@@ -130,6 +141,46 @@ const FFMPEG_TIMESTAMP_OPTIONS = [
 const STREAM_INPUT_RETRY_LIMIT = 12;
 const STREAM_LOG_BUFFER_LENGTH = 16_000;
 const STREAM_EVENT_BUFFER_LENGTH = 80;
+const PROVIDER_LIMIT_ERROR = "All provider profiles are at their configured connection limit.";
+
+type AssignedProviderProfile = Pick<ProviderProfile, "id" | "name" | "username" | "password" | "max_connections">;
+
+function providerUsageCounts() {
+  const counts = new Map<number, number>();
+  for (const session of hlsSessions.values()) {
+    if (!session.exited && session.providerProfileId) {
+      counts.set(session.providerProfileId, (counts.get(session.providerProfileId) ?? 0) + 1);
+    }
+  }
+  for (const session of mpegTsSessions.values()) {
+    if (!session.exited && session.providerProfileId) {
+      counts.set(session.providerProfileId, (counts.get(session.providerProfileId) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+function selectProviderProfile() {
+  const profiles = listProviderProfiles()
+    .filter((profile) => profile.enabled)
+    .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  if (profiles.length === 0) return null;
+
+  const counts = providerUsageCounts();
+  const available = profiles.find((profile) => (counts.get(profile.id) ?? 0) < Math.max(1, profile.max_connections));
+  if (!available) {
+    throw new Error(PROVIDER_LIMIT_ERROR);
+  }
+  return available;
+}
+
+function assignedProvider(profile: AssignedProviderProfile | null) {
+  return {
+    providerProfileId: profile?.id ?? null,
+    providerProfileName: profile?.name ?? null,
+    providerProfileUsername: profile?.username ?? null
+  };
+}
 
 function boundedInt(value: string, fallback: number, min: number, max: number) {
   const parsed = Number(value);
@@ -303,6 +354,9 @@ function streamClientBase(req: AuthedRequest, kind: HlsRequestKind, now = Date.n
     lastSegmentAt: null,
     lastSegmentName: "",
     playlistRequests: 0,
+    providerProfileId: null,
+    providerProfileName: null,
+    providerProfileUsername: null,
     role: externalProfile ? "external" : req.user?.role ?? "unknown",
     segmentRequests: 0,
     source: externalProfile ? "external" : "browser",
@@ -387,6 +441,9 @@ function recordHlsClientRequest(
     lastSegmentAt: null,
     lastSegmentName: "",
     playlistRequests: 0,
+    providerProfileId: session.providerProfileId,
+    providerProfileName: session.providerProfileName,
+    providerProfileUsername: session.providerProfileUsername,
     role: externalProfile ? "external" : req.user?.role ?? "unknown",
     segmentRequests: 0,
     source: externalProfile ? "external" : "browser",
@@ -839,6 +896,9 @@ export function getActiveStreamMonitor() {
           lastSegmentAt: client.lastSegmentAt ? new Date(client.lastSegmentAt).toISOString() : null,
           lastSegmentName: client.lastSegmentName,
           playlistRequests: client.playlistRequests,
+          providerProfileId: client.providerProfileId,
+          providerProfileName: client.providerProfileName,
+          providerProfileUsername: client.providerProfileUsername,
           role: client.role,
           segmentRequests: client.segmentRequests,
           source: client.source,
@@ -865,6 +925,9 @@ export function getActiveStreamMonitor() {
         mode: session.mode,
         outputType: "hls" as StreamOutputType,
         playlistRequests: session.requestStats.playlist,
+        providerProfileId: session.providerProfileId,
+        providerProfileName: session.providerProfileName,
+        providerProfileUsername: session.providerProfileUsername,
         providerConnectionCount: !session.exited && clients.length > 0 ? 1 : 0,
         quality: streamQualities(session),
         runtimeMs: now - session.startedAt,
@@ -918,6 +981,9 @@ export function getActiveStreamMonitor() {
         mode: "normal" as HlsMode,
         outputType: "mpegts" as StreamOutputType,
         playlistRequests: 0,
+        providerProfileId: newestSession?.providerProfileId ?? null,
+        providerProfileName: newestSession?.providerProfileName ?? null,
+        providerProfileUsername: newestSession?.providerProfileUsername ?? null,
         providerConnectionCount: activeSessions.length,
         quality: newestSession ? streamQualities({ stderr: newestSession.stderr, mode: "normal" }) : {
           input: emptyQuality("Input"),
@@ -965,19 +1031,23 @@ function shouldRestartStaleHlsSession(session: HlsSession, runtime: HlsRuntimeSe
   return ageMs > thresholdMs && Date.now() - session.startedAt > thresholdMs;
 }
 
-function ensureHlsSession(channelId: number, streamUrl: string) {
+function ensureHlsSession(channelId: number, sourceStreamUrl: string) {
   const existing = hlsSessions.get(channelId);
-  const mode = hlsModeForChannel(channelId, streamUrl);
+  const mode = hlsModeForChannel(channelId, sourceStreamUrl);
   const runtime = hlsRuntimeSettings();
   const hlsListSize = runtime.dvrWindowMinutes > 0
     ? Math.max(HLS_LIVE_SEGMENT_COUNT, Math.ceil((runtime.dvrWindowMinutes * 60) / HLS_SEGMENT_SECONDS))
     : HLS_LIVE_SEGMENT_COUNT;
-  if (existing && !existing.exited && existing.streamUrl === streamUrl && existing.mode === mode && existing.inputMode === runtime.inputMode) {
+  if (existing && !existing.exited && existing.sourceStreamUrl === sourceStreamUrl && existing.mode === mode && existing.inputMode === runtime.inputMode) {
     existing.lastAccess = Date.now();
     return existing;
   }
 
   stopHlsSession(channelId);
+
+  const providerProfile = selectProviderProfile();
+  const streamUrl = providerProfile ? providerStreamUrl(sourceStreamUrl, providerProfile) : sourceStreamUrl;
+  const providerAssignment = assignedProvider(providerProfile);
 
   const dir = path.join(config.cacheDir, "hls", String(channelId));
   fs.rmSync(dir, { recursive: true, force: true });
@@ -1016,6 +1086,7 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
     lastAccess: Date.now(),
     mode,
     process: ffmpeg,
+    ...providerAssignment,
     requestStats: {
       playlist: 0,
       segment: 0,
@@ -1029,9 +1100,10 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
       : mode === "audioOnly"
         ? "Audio-only input was detected earlier; using audio-only HLS output for this channel.\n"
         : "",
+    sourceStreamUrl,
     streamUrl
   };
-  recordSessionEvent(session, `Started FFmpeg HLS session in ${mode} mode using ${runtime.inputMode === "ffmpeg-direct" ? "direct FFmpeg input" : "Node pipe input"}.`);
+  recordSessionEvent(session, `Started FFmpeg HLS session in ${mode} mode using ${runtime.inputMode === "ffmpeg-direct" ? "direct FFmpeg input" : "Node pipe input"}${providerProfile ? ` on provider profile ${providerProfile.name}` : ""}.`);
 
   if (runtime.inputMode === "node-pipe") {
     session.inputAbort = pipeProviderStreamToFfmpeg(streamUrl, ffmpeg, (message) => {
@@ -1047,12 +1119,12 @@ function ensureHlsSession(channelId: number, streamUrl: string) {
   ffmpeg.stderr.on("data", (chunk: string) => {
     session.stderr = appendStderr(session.stderr, chunk);
     if (session.mode === "normal" && hasMalformedEac3Audio(session.stderr)) {
-      hlsFallbackModes.set(channelId, { mode: "videoOnly", streamUrl });
+      hlsFallbackModes.set(channelId, { mode: "videoOnly", streamUrl: sourceStreamUrl });
       session.stderr = appendStderr(session.stderr, "\nMalformed EAC3 audio detected; restarting this channel with video-only fallback.\n");
       recordSessionEvent(session, "Malformed EAC3 audio detected; restarting with video-only fallback.");
       if (!session.process.killed) session.process.kill("SIGTERM");
     } else if (session.mode === "normal" && hasAudioOnlyInput(session.stderr)) {
-      hlsFallbackModes.set(channelId, { mode: "audioOnly", streamUrl });
+      hlsFallbackModes.set(channelId, { mode: "audioOnly", streamUrl: sourceStreamUrl });
       session.stderr = appendStderr(session.stderr, "\nAudio-only input detected; restarting this channel with audio-only HLS output.\n");
       recordSessionEvent(session, "Audio-only input detected; restarting with audio-only HLS output.");
       if (!session.process.killed) session.process.kill("SIGTERM");
@@ -1177,7 +1249,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
   try {
     const canStartSession = file === "index.m3u8" && (req.query.prepare === "1" || req.query.prepare === "true" || req.query.start === "1" || req.query.start === "true");
     let session = hlsSessions.get(channelId);
-    if (!session || session.exited || session.streamUrl !== channel.stream_url) {
+    if (!session || session.exited || session.sourceStreamUrl !== channel.stream_url) {
       if (!canStartSession) {
         return res.status(409).json({ error: "HLS session is not active. Reload the player to start a fresh stream." });
       }
@@ -1228,6 +1300,9 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
     }
     return res.sendFile(filePath);
   } catch (error) {
+    if (error instanceof Error && error.message === PROVIDER_LIMIT_ERROR) {
+      return res.status(429).json({ error: error.message });
+    }
     const session = hlsSessions.get(channelId);
     if (session?.exited) {
       return res.status(502).json({
@@ -1245,6 +1320,17 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
 
   const channel = findChannel(channelId);
   if (!channel) return res.status(404).json({ error: "Channel not found" });
+  let providerProfile: AssignedProviderProfile | null;
+  try {
+    providerProfile = selectProviderProfile();
+  } catch (error) {
+    if (error instanceof Error && error.message === PROVIDER_LIMIT_ERROR) {
+      return res.status(429).json({ error: error.message });
+    }
+    throw error;
+  }
+  const streamUrl = providerProfile ? providerStreamUrl(channel.stream_url, providerProfile) : channel.stream_url;
+  const providerAssignment = assignedProvider(providerProfile);
 
   const ffmpeg = spawn(config.ffmpegPath, [
     ...ffmpegInputOptions("normal"),
@@ -1269,6 +1355,9 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
 
   const now = Date.now();
   const client = streamClientBase(req, "stream", now);
+  client.providerProfileId = providerAssignment.providerProfileId;
+  client.providerProfileName = providerAssignment.providerProfileName;
+  client.providerProfileUsername = providerAssignment.providerProfileUsername;
   client.segmentRequests = 1;
   client.lastSegmentAt = now;
   client.lastSegmentName = "mpeg-ts";
@@ -1288,15 +1377,16 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
     lastAccess: now,
     lastInputAt: null,
     process: ffmpeg,
+    ...providerAssignment,
     startedAt: now,
     stderr: "",
-    streamUrl: channel.stream_url
+    streamUrl
   };
   mpegTsSessions.set(sessionId, session);
-  recordMpegTsSessionEvent(session, "Started MPEG-TS transcode stream.");
+  recordMpegTsSessionEvent(session, `Started MPEG-TS transcode stream${providerProfile ? ` on provider profile ${providerProfile.name}` : ""}.`);
 
   const inputAbort = pipeProviderStreamToFfmpeg(
-    channel.stream_url,
+    streamUrl,
     ffmpeg,
     (message) => {
       stderr = appendStderr(stderr, message);
@@ -1361,7 +1451,7 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
     console.warn("FFmpeg transcode exited", {
       channelId,
       code,
-      stderr: redactStreamDetails(stderr, channel.stream_url)
+      stderr: redactStreamDetails(stderr, streamUrl)
     });
   });
 
@@ -1392,12 +1482,22 @@ streamRouter.get("/:channelId", async (req: AuthedRequest, res, next) => {
 
   const channel = findChannel(channelId);
   if (!channel) return res.status(404).json({ error: "Channel not found" });
+  let providerProfile: AssignedProviderProfile | null;
+  try {
+    providerProfile = selectProviderProfile();
+  } catch (error) {
+    if (error instanceof Error && error.message === PROVIDER_LIMIT_ERROR) {
+      return res.status(429).json({ error: error.message });
+    }
+    throw error;
+  }
+  const streamUrl = providerProfile ? providerStreamUrl(channel.stream_url, providerProfile) : channel.stream_url;
 
   const abort = new AbortController();
   req.on("close", () => abort.abort());
 
   try {
-    const upstream = await fetch(channel.stream_url, {
+    const upstream = await fetch(streamUrl, {
       signal: abort.signal,
       headers: {
         "user-agent": "SSTV IPTV/1.0",

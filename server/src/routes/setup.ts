@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getDb, isSetupComplete, setSetting, setting } from "../db/database.js";
 import { createSession } from "../auth/session.js";
 import { createPlexPin, getPlexResources, getPlexUser, pollPlexPin } from "../services/plex.js";
+import { syncPrimaryProviderProfile } from "../services/providerProfiles.js";
 
 export const setupRouter = Router();
 
@@ -113,6 +114,7 @@ setupRouter.post("/complete", guardSetup, async (req, res, next) => {
       setSetting("xc_base_url", body.xcBaseUrl);
       setSetting("xc_username", body.xcUsername);
       setSetting("xc_password", body.xcPassword);
+      syncPrimaryProviderProfile(body.xcUsername, body.xcPassword, db);
       setSetting("xmltv_url", body.xmltvUrl);
       setSetting("refresh_interval_hours", String(body.refreshIntervalHours));
       setSetting("plex_token", body.plexToken);

@@ -28,6 +28,23 @@ export interface ExternalProfile {
   updated_at: string;
 }
 
+export interface ProviderProfile {
+  id: number;
+  name: string;
+  enabled: number;
+  is_primary: number;
+  username: string;
+  password: string;
+  max_connections: number;
+  sort_order: number;
+  account_status: string | null;
+  account_expires_at: string | null;
+  account_days_left: number | null;
+  last_checked_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ParsedM3uChannel {
   tvgId: string;
   tvgName: string;

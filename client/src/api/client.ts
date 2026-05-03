@@ -149,6 +149,9 @@ export interface StreamMonitorClient {
   lastSegmentAt: string | null;
   lastSegmentName: string;
   playlistRequests: number;
+  providerProfileId: number | null;
+  providerProfileName: string | null;
+  providerProfileUsername: string | null;
   role: string;
   segmentRequests: number;
   source: "browser" | "external";
@@ -175,6 +178,9 @@ export interface StreamMonitorStream {
   mode: "normal" | "videoOnly" | "audioOnly";
   outputType: "hls" | "mpegts";
   playlistRequests: number;
+  providerProfileId: number | null;
+  providerProfileName: string | null;
+  providerProfileUsername: string | null;
   providerConnectionCount: number;
   quality: StreamQualityPair;
   runtimeMs: number;
@@ -210,6 +216,23 @@ export interface ExternalProfile {
   xc_username: string;
   xc_password: string;
   output_mode: "hls" | "mpegts";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProviderProfile {
+  id: number;
+  name: string;
+  enabled: 0 | 1;
+  is_primary: 0 | 1;
+  username: string;
+  password: string;
+  max_connections: number;
+  sort_order: number;
+  account_status: string | null;
+  account_expires_at: string | null;
+  account_days_left: number | null;
+  last_checked_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -318,6 +341,7 @@ export const api = {
     externalInternalBaseUrl: string;
     externalPublicBaseUrl: string;
     externalProfiles: ExternalProfile[];
+    providerProfiles: ProviderProfile[];
     emby: EmbyIntegrationStatus;
     plex: { configured: boolean; serverReachable: boolean };
   }>("/api/admin/settings"),
@@ -357,6 +381,20 @@ export const api = {
     request<{ profile: ExternalProfile; profiles: ExternalProfile[] }>(`/api/admin/external-profiles/${id}/regenerate-token`, { method: "POST" }),
   regenerateExternalPassword: (id: number) =>
     request<{ profile: ExternalProfile; profiles: ExternalProfile[] }>(`/api/admin/external-profiles/${id}/regenerate-password`, { method: "POST" }),
+  createProviderProfile: (body: {
+    maxConnections?: number;
+    name: string;
+    passwordPattern: string;
+    passwordReplacement: string;
+    usernamePattern: string;
+    usernameReplacement: string;
+  }) => request<{ profile: ProviderProfile; profiles: ProviderProfile[] }>("/api/admin/provider-profiles", { method: "POST", body: JSON.stringify(body) }),
+  updateProviderProfile: (id: number, body: { enabled?: boolean; maxConnections?: number; name?: string; password?: string; username?: string }) =>
+    request<{ profile: ProviderProfile; profiles: ProviderProfile[] }>(`/api/admin/provider-profiles/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteProviderProfile: (id: number) =>
+    request<{ ok: true; profiles: ProviderProfile[] }>(`/api/admin/provider-profiles/${id}`, { method: "DELETE" }),
+  checkProviderProfile: (id: number) =>
+    request<{ profile: ProviderProfile; profiles: ProviderProfile[] }>(`/api/admin/provider-profiles/${id}/check`, { method: "POST" }),
   groups: () => request<{ groups: ChannelGroup[] }>("/api/admin/groups"),
   updateGroup: (id: number, body: { enabled?: boolean; useChannelNameForEpg?: boolean }) =>
     request<{ groups: ChannelGroup[] }>(`/api/admin/groups/${id}`, { method: "PUT", body: JSON.stringify(body) }),
