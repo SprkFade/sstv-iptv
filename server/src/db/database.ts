@@ -192,8 +192,6 @@ function seedSettings() {
   insert.run("ffmpeg_rw_timeout_seconds", String(config.ffmpegRwTimeoutSeconds));
   insert.run("ffmpeg_stale_restart_seconds", String(config.ffmpegStaleRestartSeconds));
   insert.run("ffmpeg_hls_dvr_window_minutes", String(config.ffmpegHlsDvrWindowMinutes));
-  insert.run("ffmpeg_hls_startup_buffer_segments", String(config.ffmpegHlsStartupBufferSegments));
-  insert.run("ffmpeg_hls_startup_discard_segments", String(config.ffmpegHlsStartupDiscardSegments));
   insert.run("external_internal_base_url", "http://sstv-iptv:3025");
   insert.run("external_public_base_url", "");
   insert.run("emby_enabled", "false");

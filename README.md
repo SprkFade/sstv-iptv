@@ -70,7 +70,7 @@ Set a long random `SESSION_SECRET` before exposing the app.
 
 `FFMPEG_PATH` defaults to `ffmpeg`. The published Docker image includes FFmpeg for desktop live transcoding. `FFMPEG_LOG_LEVEL` defaults to `info`; use `verbose` or `debug` temporarily when diagnosing stream lockups. `FFMPEG_USER_AGENT` defaults to a VLC-style user agent for IPTV provider compatibility.
 
-Stream proxy defaults can be set with `FFMPEG_HLS_INPUT_MODE`, `FFMPEG_RECONNECT_DELAY_MAX`, `FFMPEG_RW_TIMEOUT_SECONDS`, `FFMPEG_STALE_RESTART_SECONDS`, `FFMPEG_HLS_DVR_WINDOW_MINUTES`, `FFMPEG_HLS_STARTUP_BUFFER_SEGMENTS`, and `FFMPEG_HLS_STARTUP_DISCARD_SEGMENTS`, then edited later from the Admin page. Direct FFmpeg input is the default; switch to `pipe` only if a provider behaves better through the Node fallback. The startup buffer/discard settings reduce early buffer gaps by waiting for extra generated HLS segments and hiding the first dirty startup segments from playback.
+Stream proxy defaults can be set with `FFMPEG_HLS_INPUT_MODE`, `FFMPEG_RECONNECT_DELAY_MAX`, `FFMPEG_RW_TIMEOUT_SECONDS`, and `FFMPEG_STALE_RESTART_SECONDS`, then edited later from the Admin page. Direct FFmpeg input is the default; switch to `pipe` only if a provider behaves better through the Node fallback.
 
 ## Data Persistence
 

@@ -32,8 +32,6 @@ export const config = {
   ffmpegRwTimeoutSeconds: Number(process.env.FFMPEG_RW_TIMEOUT_SECONDS ?? 15),
   ffmpegStaleRestartSeconds: Number(process.env.FFMPEG_STALE_RESTART_SECONDS ?? 30),
   ffmpegHlsDvrWindowMinutes: Number(process.env.FFMPEG_HLS_DVR_WINDOW_MINUTES ?? 20),
-  ffmpegHlsStartupBufferSegments: Number(process.env.FFMPEG_HLS_STARTUP_BUFFER_SEGMENTS ?? 4),
-  ffmpegHlsStartupDiscardSegments: Number(process.env.FFMPEG_HLS_STARTUP_DISCARD_SEGMENTS ?? 2),
   ffmpegUserAgent: process.env.FFMPEG_USER_AGENT ?? "VLC/3.0.20 LibVLC/3.0.20",
   cookieSecure: process.env.COOKIE_SECURE === "true",
   clientDistPath: process.env.CLIENT_DIST_PATH ?? path.join(appRoot, "client", "dist")

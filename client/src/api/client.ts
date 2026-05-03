@@ -107,8 +107,6 @@ export interface StreamStatus {
       rwTimeoutSeconds: number;
       segmentSeconds: number;
       staleRestartSeconds: number;
-      startupBufferSegments: number;
-      startupDiscardSegments: number;
     };
     startedAt: string;
     tempFiles: string[];
@@ -314,8 +312,6 @@ export const api = {
     plexServerIdentifier: string;
     ffmpegHlsInputMode: "direct" | "pipe";
     ffmpegHlsDvrWindowMinutes: number;
-    ffmpegHlsStartupBufferSegments: number;
-    ffmpegHlsStartupDiscardSegments: number;
     ffmpegReconnectDelayMax: number;
     ffmpegRwTimeoutSeconds: number;
     ffmpegStaleRestartSeconds: number;
@@ -334,8 +330,6 @@ export const api = {
     plexServerIdentifier: string;
     ffmpegHlsInputMode: "direct" | "pipe";
     ffmpegHlsDvrWindowMinutes: number;
-    ffmpegHlsStartupBufferSegments: number;
-    ffmpegHlsStartupDiscardSegments: number;
     ffmpegReconnectDelayMax: number;
     ffmpegRwTimeoutSeconds: number;
     ffmpegStaleRestartSeconds: number;

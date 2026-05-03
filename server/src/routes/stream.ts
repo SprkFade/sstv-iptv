@@ -101,8 +101,6 @@ type HlsRuntimeSettings = {
   reconnectDelayMax: number;
   rwTimeoutSeconds: number;
   staleRestartSeconds: number;
-  startupBufferSegments: number;
-  startupDiscardSegments: number;
 };
 
 const hlsSessions = new Map<number, HlsSession>();
@@ -146,9 +144,7 @@ function hlsRuntimeSettings(): HlsRuntimeSettings {
     inputMode: setting("ffmpeg_hls_input_mode", config.ffmpegHlsInputMode) === "pipe" ? "node-pipe" : "ffmpeg-direct",
     reconnectDelayMax: boundedInt(setting("ffmpeg_reconnect_delay_max", String(config.ffmpegReconnectDelayMax)), 5, 1, 60),
     rwTimeoutSeconds: boundedInt(setting("ffmpeg_rw_timeout_seconds", String(config.ffmpegRwTimeoutSeconds)), 15, 5, 120),
-    staleRestartSeconds: boundedInt(setting("ffmpeg_stale_restart_seconds", String(config.ffmpegStaleRestartSeconds)), 30, 0, 300),
-    startupBufferSegments: boundedInt(setting("ffmpeg_hls_startup_buffer_segments", String(config.ffmpegHlsStartupBufferSegments)), 4, 2, 20),
-    startupDiscardSegments: boundedInt(setting("ffmpeg_hls_startup_discard_segments", String(config.ffmpegHlsStartupDiscardSegments)), 2, 0, 10)
+    staleRestartSeconds: boundedInt(setting("ffmpeg_stale_restart_seconds", String(config.ffmpegStaleRestartSeconds)), 30, 0, 300)
   };
 }
 
@@ -426,64 +422,6 @@ function rewritePlaylistForClientSession(playlist: string, clientSession: string
     .split(/\r?\n/)
     .map((line) => (/^segment_\d{5}\.ts$/.test(line.trim()) ? `${line.trim()}?clientSession=${encodeURIComponent(clientSession)}` : line))
     .join("\n");
-}
-
-function segmentNumber(segment: string) {
-  const match = segment.match(/^segment_(\d{5})\.ts$/);
-  return match ? Number(match[1]) : null;
-}
-
-function rewritePlaylistForStartupStability(playlist: string, discardSegments: number) {
-  if (discardSegments <= 0) return playlist;
-  const lines = playlist.split(/\r?\n/);
-  const output: string[] = [];
-  let pendingSegmentTags: string[] = [];
-  let removedAny = false;
-  let firstKeptSegmentNumber: number | null = null;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (/^segment_\d{5}\.ts$/.test(trimmed)) {
-      const number = segmentNumber(trimmed);
-      if (number !== null && number < discardSegments) {
-        pendingSegmentTags = [];
-        removedAny = true;
-        continue;
-      }
-      if (firstKeptSegmentNumber === null && number !== null) firstKeptSegmentNumber = number;
-      output.push(...pendingSegmentTags, line);
-      pendingSegmentTags = [];
-      continue;
-    }
-
-    if (trimmed.startsWith("#EXTINF:") || trimmed.startsWith("#EXT-X-PROGRAM-DATE-TIME:") || trimmed.startsWith("#EXT-X-DISCONTINUITY")) {
-      pendingSegmentTags.push(line);
-      continue;
-    }
-
-    output.push(...pendingSegmentTags);
-    pendingSegmentTags = [];
-
-    if (trimmed.startsWith("#EXT-X-MEDIA-SEQUENCE:") && firstKeptSegmentNumber === null) {
-      output.push(line);
-    } else {
-      output.push(line);
-    }
-  }
-
-  output.push(...pendingSegmentTags);
-  if (!removedAny || firstKeptSegmentNumber === null) return playlist;
-
-  return output
-    .map((line) => line.trim().startsWith("#EXT-X-MEDIA-SEQUENCE:") ? `#EXT-X-MEDIA-SEQUENCE:${firstKeptSegmentNumber}` : line)
-    .join("\n");
-}
-
-function rewritePlaylistForPlayback(playlist: string, runtime: HlsRuntimeSettings, clientSession: string) {
-  return rewritePlaylistForClientSession(
-    rewritePlaylistForStartupStability(playlist, runtime.startupDiscardSegments),
-    clientSession
-  );
 }
 
 function hasMalformedEac3Audio(stderr: string) {
@@ -1245,8 +1183,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
       }
       session = ensureHlsSession(channelId, channel.stream_url);
     }
-    const runtime = hlsRuntimeSettings();
-    if (file === "index.m3u8" && shouldRestartStaleHlsSession(session, runtime)) {
+    if (file === "index.m3u8" && shouldRestartStaleHlsSession(session, hlsRuntimeSettings())) {
       if (!canStartSession && activePlaybackClients(session).length === 0) {
         return res.status(409).json({ error: "HLS session is stale. Reload the player to start a fresh stream." });
       }
@@ -1270,11 +1207,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
 
     const filePath = path.join(session.dir, file);
     if (file === "index.m3u8") {
-      const startupSegments = Math.max(
-        session.mode === "audioOnly" ? 6 : 2,
-        runtime.startupBufferSegments + runtime.startupDiscardSegments
-      );
-      await waitForReadyPlaylist(session.dir, session.mode === "audioOnly" ? 30_000 : 20_000, startupSegments);
+      await waitForReadyPlaylist(session.dir, session.mode === "audioOnly" ? 30_000 : 20_000, session.mode === "audioOnly" ? 6 : 2);
     } else {
       await waitForFile(filePath, 10_000);
     }
@@ -1289,7 +1222,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
     if (file.endsWith(".m3u8")) {
       res.type("application/vnd.apple.mpegurl");
       const playlist = await fs.promises.readFile(filePath, "utf8");
-      return res.send(rewritePlaylistForPlayback(playlist, runtime, hlsClientSessionId(req)));
+      return res.send(rewritePlaylistForClientSession(playlist, hlsClientSessionId(req)));
     } else {
       res.type("video/mp2t");
     }
