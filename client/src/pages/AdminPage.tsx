@@ -915,14 +915,14 @@ export function AdminPage() {
                     <div className="text-xs text-ink/50">{diagnostic.tvg_name && diagnostic.tvg_name !== diagnostic.display_name ? diagnostic.tvg_name : ""}</div>
                   </td>
                   <td>{diagnostic.group_title || "No group"}</td>
-                  <td className="font-mono text-xs">{diagnostic.source_id || diagnostic.id}</td>
-                  <td className="font-mono text-xs">
+                  <td className="max-w-40 break-words text-sm">{diagnostic.source_id || diagnostic.id}</td>
+                  <td className="max-w-56 break-words text-sm">
                     {diagnostic.tvg_id || "none"}
                     {diagnostic.tvg_id_count > 1 ? <span className="ml-1 text-gold">x{diagnostic.tvg_id_count}</span> : null}
                   </td>
                   <td>
-                    <div className="font-mono text-xs">{diagnostic.xmltv_channel_id || "none"}</div>
-                    <div className="max-w-56 truncate text-xs text-ink/55">{diagnostic.xmltv_match_name || ""}</div>
+                    <div className="max-w-64 break-words text-sm">{diagnostic.xmltv_channel_id || "none"}</div>
+                    <div className="max-w-64 truncate text-sm text-ink/55">{diagnostic.xmltv_match_name || ""}</div>
                   </td>
                   <td>
                     <span className={`rounded-md px-2 py-1 text-xs font-bold ${
