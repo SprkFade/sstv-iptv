@@ -168,6 +168,65 @@ adminRouter.get("/refresh-runs", (_req, res) => {
   res.json({ runs: rows });
 });
 
+adminRouter.get("/epg-diagnostics", (_req, res) => {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `WITH tvg_counts AS (
+         SELECT tvg_id, COUNT(*) AS count
+         FROM channels
+         WHERE enabled = 1 AND tvg_id IS NOT NULL AND tvg_id != ''
+         GROUP BY tvg_id
+       ),
+       xmltv_counts AS (
+         SELECT xmltv_channel_id, COUNT(*) AS count
+         FROM channels
+         WHERE enabled = 1 AND xmltv_channel_id IS NOT NULL AND xmltv_channel_id != ''
+         GROUP BY xmltv_channel_id
+       )
+       SELECT channels.id,
+              channels.source_id,
+              channels.tvg_id,
+              channels.tvg_name,
+              channels.display_name,
+              channels.group_title,
+              channels.channel_number,
+              channels.xmltv_channel_id,
+              channels.xmltv_match_method,
+              channels.xmltv_match_score,
+              channels.xmltv_match_name,
+              COALESCE(channel_groups.enabled, 0) AS group_enabled,
+              COALESCE(tvg_counts.count, 0) AS tvg_id_count,
+              COALESCE(xmltv_counts.count, 0) AS xmltv_id_count
+       FROM channels
+       LEFT JOIN channel_groups ON channel_groups.name = ${groupNameSql()}
+       LEFT JOIN tvg_counts ON tvg_counts.tvg_id = channels.tvg_id
+       LEFT JOIN xmltv_counts ON xmltv_counts.xmltv_channel_id = channels.xmltv_channel_id
+       WHERE channels.enabled = 1
+       ORDER BY CASE WHEN channels.channel_number IS NULL THEN 1 ELSE 0 END,
+                channels.channel_number,
+                channels.sort_order,
+                channels.display_name COLLATE NOCASE`
+    )
+    .all() as Array<Record<string, string | number | null>>;
+
+  const diagnostics = rows.map((row) => {
+    const warnings: string[] = [];
+    const method = String(row.xmltv_match_method ?? "");
+    const score = Number(row.xmltv_match_score ?? 0);
+    if (!row.xmltv_channel_id) warnings.push("unmatched");
+    if (!row.tvg_id) warnings.push("missing provider EPG id");
+    if (row.tvg_id && method && method !== "tvg-id") warnings.push("provider EPG id did not match XMLTV id");
+    if (method === "fuzzy") warnings.push(score < 0.82 ? "low confidence fuzzy match" : "fuzzy match");
+    if (Number(row.tvg_id_count ?? 0) > 1) warnings.push("duplicate provider EPG id");
+    if (Number(row.xmltv_id_count ?? 0) > 1) warnings.push("shared XMLTV id");
+    if (!row.group_enabled) warnings.push("hidden group");
+    return { ...row, warnings };
+  });
+
+  res.json({ diagnostics });
+});
+
 adminRouter.get("/users", (_req, res) => {
   const rows = getDb()
     .prepare(

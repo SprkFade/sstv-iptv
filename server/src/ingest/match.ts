@@ -1,6 +1,14 @@
 import type { ParsedM3uChannel, XmltvChannel } from "../types/app.js";
 import { normalizeName, similarity } from "../utils/normalize.js";
 
+export type ChannelMatchMethod = "tvg-id" | "exact-name" | "normalized-name" | "fuzzy";
+
+export interface ChannelMatch {
+  channel: XmltvChannel;
+  method: ChannelMatchMethod;
+  score: number;
+}
+
 export function matchChannels(m3uChannels: ParsedM3uChannel[], xmltvChannels: XmltvChannel[]) {
   const byId = new Map(xmltvChannels.map((channel) => [channel.id.toLowerCase(), channel]));
   const byName = new Map(xmltvChannels.map((channel) => [channel.displayName.toLowerCase(), channel]));
@@ -9,13 +17,33 @@ export function matchChannels(m3uChannels: ParsedM3uChannel[], xmltvChannels: Xm
   );
 
   let matchedCount = 0;
-  const result = new Map<number, XmltvChannel>();
+  const result = new Map<number, ChannelMatch>();
 
   m3uChannels.forEach((channel, index) => {
     let match: XmltvChannel | undefined;
-    if (channel.tvgId) match = byId.get(channel.tvgId.toLowerCase());
-    if (!match && channel.tvgName) match = byName.get(channel.tvgName.toLowerCase());
-    if (!match) match = byNormalizedName.get(normalizeName(channel.tvgName || channel.displayName));
+    let method: ChannelMatchMethod | undefined;
+    let score = 0;
+    if (channel.tvgId) {
+      match = byId.get(channel.tvgId.toLowerCase());
+      if (match) {
+        method = "tvg-id";
+        score = 1;
+      }
+    }
+    if (!match && channel.tvgName) {
+      match = byName.get(channel.tvgName.toLowerCase());
+      if (match) {
+        method = "exact-name";
+        score = 1;
+      }
+    }
+    if (!match) {
+      match = byNormalizedName.get(normalizeName(channel.tvgName || channel.displayName));
+      if (match) {
+        method = "normalized-name";
+        score = 1;
+      }
+    }
 
     if (!match) {
       let bestScore = 0;
@@ -29,12 +57,17 @@ export function matchChannels(m3uChannels: ParsedM3uChannel[], xmltvChannels: Xm
           match = candidate;
         }
       }
-      if (bestScore < 0.72) match = undefined;
+      if (bestScore < 0.72) {
+        match = undefined;
+      } else {
+        method = "fuzzy";
+        score = bestScore;
+      }
     }
 
-    if (match) {
+    if (match && method) {
       matchedCount += 1;
-      result.set(index, match);
+      result.set(index, { channel: match, method, score });
     }
   });
 

@@ -54,6 +54,9 @@ export function migrate() {
       group_title TEXT,
       stream_url TEXT NOT NULL,
       xmltv_channel_id TEXT,
+      xmltv_match_method TEXT,
+      xmltv_match_score REAL,
+      xmltv_match_name TEXT,
       channel_number INTEGER,
       sort_order INTEGER NOT NULL DEFAULT 0,
       enabled INTEGER NOT NULL DEFAULT 1,
@@ -146,6 +149,9 @@ export function migrate() {
 
   addColumnIfMissing(database, "channels", "channel_number", "INTEGER");
   addColumnIfMissing(database, "channels", "source_id", "TEXT");
+  addColumnIfMissing(database, "channels", "xmltv_match_method", "TEXT");
+  addColumnIfMissing(database, "channels", "xmltv_match_score", "REAL");
+  addColumnIfMissing(database, "channels", "xmltv_match_name", "TEXT");
   addColumnIfMissing(database, "channels", "sort_order", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing(database, "channel_groups", "use_channel_name_for_epg", "INTEGER NOT NULL DEFAULT 0");
   database.exec("CREATE INDEX IF NOT EXISTS idx_channels_enabled_sort ON channels(enabled, channel_number, sort_order, display_name);");

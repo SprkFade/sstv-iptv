@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Activity, Copy, Database, KeyRound, RefreshCw, Server, Users } from "lucide-react";
-import { api, type EmbyTask, type ExternalProfile, type ProviderProfile, type RefreshProgress } from "../api/client";
+import { Activity, Copy, Database, KeyRound, RefreshCw, Search, Server, Users } from "lucide-react";
+import { api, type EmbyTask, type EpgDiagnostic, type ExternalProfile, type ProviderProfile, type RefreshProgress } from "../api/client";
 
 type Settings = Awaited<ReturnType<typeof api.settings>>;
 
@@ -36,6 +36,11 @@ function formatRefreshTimestamp(value: string | number | null | undefined) {
   return `${month}/${day}/${year} ${hour12}:${minutes} ${period}`;
 }
 
+function formatMatchScore(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "";
+  return value.toFixed(2);
+}
+
 function trimBaseUrl(value: string) {
   return value.replace(/\/+$/, "");
 }
@@ -57,6 +62,8 @@ export function AdminPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [runs, setRuns] = useState<Array<Record<string, string | number | null>>>([]);
   const [users, setUsers] = useState<Array<Record<string, string | number | null>>>([]);
+  const [epgDiagnostics, setEpgDiagnostics] = useState<EpgDiagnostic[]>([]);
+  const [epgSearch, setEpgSearch] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -74,13 +81,14 @@ export function AdminPage() {
   });
 
   const load = async () => {
-    const [settingsResult, runResult, userResult, statusResult] = await Promise.allSettled([
+    const [settingsResult, runResult, userResult, statusResult, epgResult] = await Promise.allSettled([
       api.settings(),
       api.refreshRuns(),
       api.users(),
-      api.refreshStatus()
+      api.refreshStatus(),
+      api.epgDiagnostics()
     ]);
-    const failures = [settingsResult, runResult, userResult, statusResult].filter((result) => result.status === "rejected");
+    const failures = [settingsResult, runResult, userResult, statusResult, epgResult].filter((result) => result.status === "rejected");
     if (settingsResult.status === "fulfilled") setSettings(settingsResult.value);
     if (runResult.status === "fulfilled") setRuns(runResult.value.runs);
     if (userResult.status === "fulfilled") setUsers(userResult.value.users);
@@ -88,6 +96,7 @@ export function AdminPage() {
       setRefreshStatus(statusResult.value);
       setRefreshing(statusResult.value.active);
     }
+    if (epgResult.status === "fulfilled") setEpgDiagnostics(epgResult.value.diagnostics);
     if (failures.length) {
       const first = failures[0] as PromiseRejectedResult;
       setError(first.reason instanceof Error ? first.reason.message : "Unable to load all admin data");
@@ -145,6 +154,24 @@ export function AdminPage() {
 
   const setExternalProfiles = (profiles: ExternalProfile[]) => setSettings({ ...settings, externalProfiles: profiles });
   const setProviderProfiles = (profiles: ProviderProfile[]) => setSettings({ ...settings, providerProfiles: profiles });
+  const filteredDiagnostics = epgDiagnostics.filter((diagnostic) => {
+    const query = epgSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [
+      diagnostic.display_name,
+      diagnostic.group_title,
+      diagnostic.source_id,
+      diagnostic.tvg_id,
+      diagnostic.tvg_name,
+      diagnostic.xmltv_channel_id,
+      diagnostic.xmltv_match_name,
+      diagnostic.xmltv_match_method,
+      diagnostic.warnings.join(" ")
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+  const visibleDiagnostics = filteredDiagnostics.slice(0, 300);
 
   const settingsPayload = () => ({
     ...settings,
@@ -806,6 +833,121 @@ export function AdminPage() {
           <Users className="mb-3 text-berry" />
           <div className="text-sm text-ink/60">Users</div>
           <div className="font-bold">{users.length}</div>
+        </div>
+      </section>
+
+      <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold">EPG match diagnostics</h2>
+            <p className="text-sm text-ink/60">
+              Shows how each enabled channel was matched during the last provider refresh.
+              {epgDiagnostics.length ? ` ${filteredDiagnostics.length}/${epgDiagnostics.length} shown.` : " Run a refresh to populate diagnostics."}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-line bg-panel px-3 text-sm font-semibold"
+            onClick={async () => {
+              const response = await api.epgDiagnostics();
+              setEpgDiagnostics(response.diagnostics);
+            }}
+          >
+            <RefreshCw size={16} /> Reload
+          </button>
+        </div>
+        <label className="relative mt-3 block">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink/45" size={18} />
+          <input
+            className="min-h-11 w-full rounded-md border border-line bg-mist py-2 pl-10 pr-3 text-sm outline-none focus:border-accent"
+            value={epgSearch}
+            onChange={(event) => setEpgSearch(event.target.value)}
+            placeholder="Search channel, group, provider EPG id, XMLTV id, method, or warning"
+          />
+        </label>
+        {filteredDiagnostics.length > visibleDiagnostics.length && (
+          <p className="mt-2 text-xs text-ink/55">Showing the first {visibleDiagnostics.length} matches. Narrow the search to compare specific channels.</p>
+        )}
+        <div className="mt-3 grid gap-2 md:hidden">
+          {visibleDiagnostics.map((diagnostic) => (
+            <article key={diagnostic.id} className="rounded-md border border-line bg-mist p-3 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-bold">{diagnostic.channel_number ? `CH ${diagnostic.channel_number} · ` : ""}{diagnostic.display_name}</div>
+                  <div className="text-xs text-ink/55">{diagnostic.group_title || "No group"}</div>
+                </div>
+                <span className="rounded-md border border-line bg-panel px-2 py-1 text-xs font-bold">
+                  {diagnostic.xmltv_match_method || "unmatched"} {formatMatchScore(diagnostic.xmltv_match_score)}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-1 text-xs">
+                <div><span className="text-ink/50">Provider EPG:</span> {diagnostic.tvg_id || "none"}</div>
+                <div><span className="text-ink/50">XMLTV:</span> {diagnostic.xmltv_channel_id || "none"}{diagnostic.xmltv_match_name ? ` · ${diagnostic.xmltv_match_name}` : ""}</div>
+              </div>
+              {diagnostic.warnings.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {diagnostic.warnings.map((warning) => (
+                    <span key={warning} className="rounded-md border border-gold/40 bg-gold/10 px-2 py-1 text-xs font-semibold text-ink/70">{warning}</span>
+                  ))}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+        <div className="mt-3 hidden overflow-x-auto md:block">
+          <table className="w-full min-w-[1080px] text-left text-sm">
+            <thead className="border-b border-line text-ink/60">
+              <tr>
+                <th className="py-2">Channel</th>
+                <th>Group</th>
+                <th>Source</th>
+                <th>Provider EPG</th>
+                <th>XMLTV match</th>
+                <th>Method</th>
+                <th>Warnings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleDiagnostics.map((diagnostic) => (
+                <tr key={diagnostic.id} className="border-b border-line align-top">
+                  <td className="py-2">
+                    <div className="font-semibold">{diagnostic.channel_number ? `CH ${diagnostic.channel_number} · ` : ""}{diagnostic.display_name}</div>
+                    <div className="text-xs text-ink/50">{diagnostic.tvg_name && diagnostic.tvg_name !== diagnostic.display_name ? diagnostic.tvg_name : ""}</div>
+                  </td>
+                  <td>{diagnostic.group_title || "No group"}</td>
+                  <td className="font-mono text-xs">{diagnostic.source_id || diagnostic.id}</td>
+                  <td className="font-mono text-xs">
+                    {diagnostic.tvg_id || "none"}
+                    {diagnostic.tvg_id_count > 1 ? <span className="ml-1 text-gold">x{diagnostic.tvg_id_count}</span> : null}
+                  </td>
+                  <td>
+                    <div className="font-mono text-xs">{diagnostic.xmltv_channel_id || "none"}</div>
+                    <div className="max-w-56 truncate text-xs text-ink/55">{diagnostic.xmltv_match_name || ""}</div>
+                  </td>
+                  <td>
+                    <span className={`rounded-md px-2 py-1 text-xs font-bold ${
+                      diagnostic.xmltv_match_method === "tvg-id"
+                        ? "bg-accent/15 text-accent"
+                        : diagnostic.xmltv_match_method === "fuzzy"
+                          ? "bg-gold/15 text-gold"
+                          : diagnostic.xmltv_match_method
+                            ? "border border-line text-ink/75"
+                            : "bg-rose-500/15 text-rose-700"
+                    }`}>
+                      {diagnostic.xmltv_match_method || "unmatched"} {formatMatchScore(diagnostic.xmltv_match_score)}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="flex max-w-md flex-wrap gap-1">
+                      {diagnostic.warnings.map((warning) => (
+                        <span key={warning} className="rounded-md border border-line bg-mist px-2 py-1 text-xs text-ink/70">{warning}</span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 

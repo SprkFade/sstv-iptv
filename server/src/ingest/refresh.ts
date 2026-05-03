@@ -199,13 +199,16 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
         );
         const insertChannel = ingestDb.prepare(
           `INSERT INTO channels
-         (source_id, tvg_id, tvg_name, display_name, logo_url, group_title, stream_url, xmltv_channel_id, channel_number, sort_order, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+         (source_id, tvg_id, tvg_name, display_name, logo_url, group_title, stream_url,
+          xmltv_channel_id, xmltv_match_method, xmltv_match_score, xmltv_match_name,
+          channel_number, sort_order, enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
         );
         const updateChannel = ingestDb.prepare(
           `UPDATE channels
          SET source_id = ?, tvg_id = ?, tvg_name = ?, display_name = ?, logo_url = ?, group_title = ?,
-             stream_url = ?, xmltv_channel_id = ?, channel_number = ?, sort_order = ?,
+             stream_url = ?, xmltv_channel_id = ?, xmltv_match_method = ?, xmltv_match_score = ?, xmltv_match_name = ?,
+             channel_number = ?, sort_order = ?,
              enabled = 1, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`
         );
@@ -218,6 +221,7 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
         for (let index = 0; index < sourceChannels.length; index += 1) {
           const channel = sourceChannels[index];
           const xmltvMatch = matches.get(index);
+          const matchedXmltvChannel = xmltvMatch?.channel;
           const sourceId = channel.sourceId ?? "";
           const existing = findChannel.get(sourceId, channel.streamUrl, sourceId) as
             | { id: number }
@@ -228,10 +232,13 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
             channel.tvgId,
             channel.tvgName,
             channel.displayName,
-            channel.logoUrl || xmltvMatch?.icon || "",
+            channel.logoUrl || matchedXmltvChannel?.icon || "",
             channel.groupTitle,
             channel.streamUrl,
-            xmltvMatch?.id ?? "",
+            matchedXmltvChannel?.id ?? "",
+            xmltvMatch?.method ?? "",
+            xmltvMatch?.score ?? null,
+            matchedXmltvChannel?.displayName ?? "",
             channel.channelNumber,
             channel.sortOrder
           ] as const;
@@ -240,10 +247,10 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
             ? (updateChannel.run(...values, existing.id), existing.id)
             : Number(insertChannel.run(...values).lastInsertRowid);
 
-          if (xmltvMatch?.id) {
-            const channelIds = xmltvToChannelIds.get(xmltvMatch.id) ?? [];
+          if (matchedXmltvChannel?.id) {
+            const channelIds = xmltvToChannelIds.get(matchedXmltvChannel.id) ?? [];
             channelIds.push(channelId);
-            xmltvToChannelIds.set(xmltvMatch.id, channelIds);
+            xmltvToChannelIds.set(matchedXmltvChannel.id, channelIds);
           }
           savedChannelCount += 1;
           if (savedChannelCount % 250 === 0 || savedChannelCount === sourceChannels.length) {

@@ -264,6 +264,24 @@ export interface EmbyTask {
   key: string;
 }
 
+export interface EpgDiagnostic {
+  id: number;
+  source_id: string | null;
+  tvg_id: string | null;
+  tvg_name: string | null;
+  display_name: string;
+  group_title: string | null;
+  channel_number: number | null;
+  xmltv_channel_id: string | null;
+  xmltv_match_method: "tvg-id" | "exact-name" | "normalized-name" | "fuzzy" | "" | null;
+  xmltv_match_score: number | null;
+  xmltv_match_name: string | null;
+  group_enabled: 0 | 1;
+  tvg_id_count: number;
+  xmltv_id_count: number;
+  warnings: string[];
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     cache: "no-store",
@@ -378,6 +396,7 @@ export const api = {
   refresh: () => request<{ started: boolean; progress: RefreshProgress }>("/api/admin/refresh", { method: "POST" }),
   refreshStatus: () => request<RefreshProgress>("/api/admin/refresh-status"),
   refreshRuns: () => request<{ runs: Array<Record<string, string | number | null>> }>("/api/admin/refresh-runs"),
+  epgDiagnostics: () => request<{ diagnostics: EpgDiagnostic[] }>("/api/admin/epg-diagnostics"),
   users: () => request<{ users: Array<Record<string, string | number | null>> }>("/api/admin/users"),
   streams: () => request<StreamMonitor>("/api/admin/streams"),
   externalProfiles: () => request<{ profiles: ExternalProfile[] }>("/api/admin/external-profiles"),
