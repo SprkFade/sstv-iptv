@@ -39,11 +39,6 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function formatPositionTicks(ticks: number | null | undefined) {
-  if (!ticks) return "";
-  return formatDuration(ticks / 10_000);
-}
-
 function compactUserAgent(value: string) {
   if (!value || value === "unknown") return "Unknown client";
   const browser = value.match(/(CriOS|Chrome|Version|Firefox|FxiOS|EdgiOS|Edg|Safari)\/[\d.]+/g)?.at(-1)?.replace("Version", "Safari");
@@ -155,49 +150,6 @@ export function StreamsPage() {
         <div className="rounded-md border border-gold/40 bg-gold/10 p-3 text-sm text-gold">
           Emby now playing lookup failed: {monitor.embySessionError}
         </div>
-      )}
-
-      {monitor?.embySessions && monitor.embySessions.length > 0 && (
-        <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h2 className="text-xl font-bold">Emby now playing</h2>
-              <p className="text-sm text-ink/60">Read from Emby sessions and matched to SSTV channels when Emby exposes the stream URL or tvg-id.</p>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-2">
-            {monitor.embySessions.map((session) => (
-              <article key={session.id || `${session.userName}-${session.deviceId}`} className="grid gap-3 rounded-md border border-line bg-mist p-3 text-sm md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_auto] md:items-center">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold">{session.userName || "Unknown user"}</span>
-                    {session.playState.isPaused !== null && (
-                      <span className="rounded-md border border-line px-2 py-0.5 text-xs text-ink/60">
-                        {session.playState.isPaused ? "Paused" : "Playing"}
-                      </span>
-                    )}
-                    {session.nowPlaying?.sstvChannelId && (
-                      <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent">
-                        SSTV {session.nowPlaying.sstvChannelId}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 truncate text-ink/60">{[session.client, session.deviceName, session.remoteEndPoint].filter(Boolean).join(" · ") || "No device details"}</p>
-                </div>
-                <div className="min-w-0">
-                  <div className="truncate font-semibold">{session.nowPlaying?.name || "No now playing item"}</div>
-                  <p className="mt-1 truncate text-ink/60">
-                    {[session.nowPlaying?.channelName, session.nowPlaying?.type, session.nowPlaying?.mediaType].filter(Boolean).join(" · ") || "No media metadata"}
-                  </p>
-                </div>
-                <div className="text-left text-ink/60 md:text-right">
-                  <div>{formatPositionTicks(session.playState.positionTicks) || "Live"}</div>
-                  <div className="text-xs">{session.playState.playMethod || "Unknown method"}</div>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
       )}
 
       <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
