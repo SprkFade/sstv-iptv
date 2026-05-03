@@ -8,7 +8,13 @@ export const favoritesRouter = Router();
 favoritesRouter.get("/", (req: AuthedRequest, res) => {
   const rows = getDb()
     .prepare(
-      `SELECT channels.id, display_name, logo_url, group_title, stream_url, channel_number, sort_order
+      `SELECT channels.id,
+              channels.display_name,
+              channels.logo_url,
+              channels.group_title,
+              channels.stream_url,
+              channels.channel_number,
+              channels.sort_order
        FROM favorites
        JOIN channels ON channels.id = favorites.channel_id
        JOIN channel_groups ON channel_groups.name = ${groupNameSql()} AND channel_groups.enabled = 1
