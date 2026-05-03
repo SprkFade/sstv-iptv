@@ -16,6 +16,12 @@ export interface Channel {
   favorite?: 0 | 1;
 }
 
+export interface SearchChannel extends Channel {
+  current_title: string | null;
+  current_start_time: string | null;
+  current_end_time: string | null;
+}
+
 export interface Program {
   id: number;
   title: string;
@@ -316,7 +322,7 @@ export const api = {
   currentGuide: (params = "") => request<{ airing: Airing[]; at: string; start: string; end: string; total: number; limit: number; offset: number; hasMore: boolean }>(`/api/guide/current${params}`),
   channels: (params = "") => request<{ channels: Channel[]; groups: string[] }>(`/api/channels${params}`),
   channelGuide: (id: string, params = "") => request<{ channel: Channel; programs: Program[] }>(`/api/guide/channel/${id}${params}`),
-  search: (q: string) => request<{ channels: Channel[]; programs: Array<Program & { channel_id: number; channel_name: string; logo_url: string }> }>(`/api/search?q=${encodeURIComponent(q)}`),
+  search: (q: string) => request<{ channels: SearchChannel[]; programs: Array<Program & { channel_id: number; channel_name: string; logo_url: string }> }>(`/api/search?q=${encodeURIComponent(q)}`),
   favorites: () => request<{ favorites: Channel[] }>("/api/favorites"),
   addFavorite: (id: number) => request<{ ok: true }>(`/api/favorites/${id}`, { method: "POST" }),
   removeFavorite: (id: number) => request<{ ok: true }>(`/api/favorites/${id}`, { method: "DELETE" }),

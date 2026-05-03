@@ -242,10 +242,38 @@ const searchSchema = z.object({
 dataRouter.get("/search", (req: AuthedRequest, res) => {
   const { q } = searchSchema.parse(req.query);
   const like = `%${q}%`;
+  const now = nowIso();
   const channels = getDb()
     .prepare(
       `SELECT channels.id, channels.display_name, channels.logo_url, channels.group_title, channels.stream_url,
-              channels.channel_number, channels.sort_order
+              channels.channel_number, channels.sort_order,
+              (
+                SELECT CASE WHEN channel_groups.use_channel_name_for_epg = 1 THEN channels.display_name ELSE current_programs.title END
+                FROM programs AS current_programs
+                WHERE current_programs.channel_id = channels.id
+                  AND current_programs.start_time <= ?
+                  AND current_programs.end_time > ?
+                ORDER BY current_programs.start_time DESC
+                LIMIT 1
+              ) AS current_title,
+              (
+                SELECT current_programs.start_time
+                FROM programs AS current_programs
+                WHERE current_programs.channel_id = channels.id
+                  AND current_programs.start_time <= ?
+                  AND current_programs.end_time > ?
+                ORDER BY current_programs.start_time DESC
+                LIMIT 1
+              ) AS current_start_time,
+              (
+                SELECT current_programs.end_time
+                FROM programs AS current_programs
+                WHERE current_programs.channel_id = channels.id
+                  AND current_programs.start_time <= ?
+                  AND current_programs.end_time > ?
+                ORDER BY current_programs.start_time DESC
+                LIMIT 1
+              ) AS current_end_time
        FROM channels
        ${visibleGroupJoin}
        WHERE channels.enabled = 1 AND (display_name LIKE ? OR tvg_name LIKE ? OR group_title LIKE ?)
@@ -253,7 +281,7 @@ dataRouter.get("/search", (req: AuthedRequest, res) => {
                 channels.channel_number, channels.sort_order, channels.display_name COLLATE NOCASE
        LIMIT 40`
     )
-    .all(like, like, like);
+    .all(now, now, now, now, now, now, like, like, like);
   const programs = getDb()
     .prepare(
       `SELECT programs.id,
@@ -270,7 +298,7 @@ dataRouter.get("/search", (req: AuthedRequest, res) => {
        ORDER BY programs.start_time
        LIMIT 60`
     )
-    .all(nowIso(), like, like, like, like, like);
+    .all(now, like, like, like, like, like);
 
   res.json({ channels, programs });
 });

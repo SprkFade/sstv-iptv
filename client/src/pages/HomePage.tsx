@@ -522,6 +522,14 @@ export function HomePage() {
                   <div className="min-w-0">
                     <div className="truncate font-semibold">{channel.display_name}</div>
                     <div className="truncate text-sm text-ink/60">{channel.group_title}</div>
+                    {channel.current_title && (
+                      <div className="mt-1 truncate text-sm text-ink/75">
+                        Now: {channel.current_title}
+                        {channel.current_start_time && channel.current_end_time
+                          ? ` · ${formatGuideTime(new Date(channel.current_start_time))} - ${formatGuideTime(new Date(channel.current_end_time))}`
+                          : ""}
+                      </div>
+                    )}
                   </div>
                 </Link>
               ))}
