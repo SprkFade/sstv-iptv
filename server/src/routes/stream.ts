@@ -758,7 +758,7 @@ function hlsModeForChannel(channelId: number, streamUrl: string): HlsMode {
   return fallback?.streamUrl === streamUrl ? fallback.mode : "normal";
 }
 
-function ffmpegInputOptions(mode: HlsMode, logLevel = config.ffmpegLogLevel) {
+function ffmpegInputOptions(mode: HlsMode, logLevel = config.ffmpegLogLevel, extraInputOptions: string[] = []) {
   return [
     "-hide_banner",
     "-nostats",
@@ -768,6 +768,7 @@ function ffmpegInputOptions(mode: HlsMode, logLevel = config.ffmpegLogLevel) {
     "-fflags", "+genpts+igndts+discardcorrupt",
     ...(mode === "normal" ? FFMPEG_NORMAL_PROBE_OPTIONS : FFMPEG_VIDEO_ONLY_PROBE_OPTIONS),
     ...FFMPEG_TIMESTAMP_OPTIONS,
+    ...extraInputOptions,
     "-i", "pipe:0",
     "-dn",
     "-sn"
@@ -843,6 +844,35 @@ function hlsOutputOptions(mode: HlsMode) {
   return [
     ...videoOptions,
     ...audioOptions
+  ];
+}
+
+function isEmbyExternalProfile(req: AuthedRequest) {
+  return req.externalProfile?.name.toLowerCase() === "emby";
+}
+
+function mpegTsInputOptionsForRequest(req: AuthedRequest) {
+  return isEmbyExternalProfile(req) ? ["-thread_queue_size", "512"] : [];
+}
+
+function mpegTsTimingOptionsForRequest(req: AuthedRequest) {
+  if (!isEmbyExternalProfile(req)) {
+    return [
+      "-g", "48",
+      "-keyint_min", "48",
+      "-sc_threshold", "0"
+    ];
+  }
+
+  return [
+    "-g", "60",
+    "-keyint_min", "60",
+    "-sc_threshold", "0",
+    "-force_key_frames", "expr:gte(t,n_forced*2)",
+    "-max_interleave_delta", "0",
+    "-mpegts_flags", "+pat_pmt_at_frames+resend_headers",
+    "-muxdelay", "0.2",
+    "-muxpreload", "0.2"
   ];
 }
 
@@ -1495,7 +1525,7 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
   const providerAssignment = assignedProvider(providerProfile);
 
   const ffmpeg = spawn(config.ffmpegPath, [
-    ...ffmpegInputOptions("normal"),
+    ...ffmpegInputOptions("normal", config.ffmpegLogLevel, mpegTsInputOptionsForRequest(req)),
     "-map", "0:v:0?",
     "-map", "0:a:0?",
     "-c:v", "libx264",
@@ -1503,9 +1533,7 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
     "-tune", "zerolatency",
     "-profile:v", "main",
     "-pix_fmt", "yuv420p",
-    "-g", "48",
-    "-keyint_min", "48",
-    "-sc_threshold", "0",
+    ...mpegTsTimingOptionsForRequest(req),
     "-c:a", "aac",
     "-b:a", "128k",
     "-ac", "2",
