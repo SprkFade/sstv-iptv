@@ -48,8 +48,7 @@ export function syncPrimaryProviderProfile(username?: string, password?: string,
   if (existing) {
     db.prepare(
       `UPDATE provider_profiles
-       SET name = 'Primary',
-           enabled = 1,
+       SET enabled = 1,
            username = ?,
            password = ?,
            sort_order = 0,
@@ -73,7 +72,7 @@ export function updateProviderProfile(id: number, body: ProviderProfileInput, db
   if (typeof body.enabled === "boolean" && !existing.is_primary) {
     db.prepare("UPDATE provider_profiles SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(body.enabled ? 1 : 0, id);
   }
-  if (body.name && !existing.is_primary) {
+  if (body.name) {
     db.prepare("UPDATE provider_profiles SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(body.name, id);
   }
   if (body.username && !existing.is_primary) {

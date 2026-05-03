@@ -186,7 +186,7 @@ export function StreamsPage() {
                       </span>
                       {stream.providerProfileName && (
                         <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-xs font-bold text-accent">
-                          Provider {stream.providerProfileName}
+                          {stream.providerProfileName}
                         </span>
                       )}
                       {stream.embySessions && stream.embySessions.length > 0 && (
@@ -255,7 +255,7 @@ export function StreamsPage() {
                             )}
                             {client.providerProfileName && (
                               <span className="rounded-md border border-line bg-panel px-2 py-0.5 text-xs font-semibold text-ink/70">
-                                Provider {client.providerProfileName}
+                                {client.providerProfileName}
                               </span>
                             )}
                             <span className="rounded-md border border-line px-2 py-0.5 text-xs text-ink/60">{client.lastRequestKind}</span>
@@ -327,7 +327,7 @@ export function StreamsPage() {
                   <td className="px-3 py-3">
                     <div className="font-bold">{log.channel_number ? `CH ${log.channel_number}` : log.channel_id ? `ID ${log.channel_id}` : ""} {log.channel_name}</div>
                     <div className="text-xs text-ink/55">{log.group_title || "No group"}</div>
-                    {log.provider_profile_name && <div className="mt-1 text-xs font-semibold text-accent">Provider {log.provider_profile_name}</div>}
+                    {log.provider_profile_name && <div className="mt-1 text-xs font-semibold text-accent">{log.provider_profile_name}</div>}
                   </td>
                   <td className="px-3 py-3 text-ink/75">{formatDateTime(log.started_at)}</td>
                   <td className="px-3 py-3 text-ink/75">{log.ended_at ? formatDateTime(log.ended_at) : "Active"}</td>

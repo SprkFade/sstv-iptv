@@ -60,7 +60,7 @@ export function findExternalProfileByXc(username: string, password: string, db =
     .prepare(
       `SELECT id, name, enabled, token, xc_username, xc_password, output_mode, created_at, updated_at
        FROM external_profiles
-       WHERE xc_username = ? AND xc_password = ? AND enabled = 1`
+       WHERE xc_username = ? AND xc_password = ? AND enabled = 1 AND name COLLATE NOCASE <> 'Emby'`
     )
     .get(username, password) as ExternalProfile | undefined;
 }

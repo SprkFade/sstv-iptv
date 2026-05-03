@@ -364,13 +364,13 @@ export function AdminPage() {
                     <label className="grid gap-1 text-sm font-medium">
                       Name
                       <input
-                        className="min-h-10 rounded-md border border-line px-3 disabled:opacity-70"
-                        disabled={Boolean(profile.is_primary)}
+                        className="min-h-10 rounded-md border border-line px-3"
                         value={profile.name}
                         onChange={(event) => setProviderProfiles(settings.providerProfiles.map((item) => item.id === profile.id ? { ...item, name: event.target.value } : item))}
                         onBlur={async (event) => {
-                          if (profile.is_primary) return;
-                          const response = await api.updateProviderProfile(profile.id, { name: event.target.value });
+                          const name = event.target.value.trim();
+                          if (!name || name === profile.name) return;
+                          const response = await api.updateProviderProfile(profile.id, { name });
                           setProviderProfiles(response.profiles);
                         }}
                       />
@@ -606,12 +606,13 @@ export function AdminPage() {
               {settings.externalProfiles.map((profile) => {
                 const internal = externalUrls(settings.externalInternalBaseUrl, profile);
                 const external = externalUrls(settings.externalPublicBaseUrl || settings.externalInternalBaseUrl, profile);
+                const isEmbyProfile = profile.name.toLowerCase() === "emby";
                 return (
                   <article key={profile.id} className="rounded-md border border-line bg-panel p-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h3 className="text-lg font-bold">{profile.name}</h3>
-                        <p className="text-sm text-ink/60">{profile.name === "Emby" ? "Use internal URLs for Docker-to-Docker setup." : "Use public URLs for phones, tablets, and IPTV apps."}</p>
+                        <p className="text-sm text-ink/60">{isEmbyProfile ? "Use M3U and XMLTV internal URLs for Docker-to-Docker setup." : "Use public M3U, XMLTV, or XC URLs for phones, tablets, and IPTV apps."}</p>
                       </div>
                       <label className="inline-flex items-center gap-2 text-sm font-semibold">
                         <input
@@ -642,22 +643,26 @@ export function AdminPage() {
                           <option value="mpegts">MPEG-TS (.ts)</option>
                         </select>
                       </label>
-                      <label className="grid gap-1 font-medium">
-                        XC username
-                        <input
-                          className="min-h-10 rounded-md border border-line px-3"
-                          value={profile.xc_username}
-                          onChange={(event) => setExternalProfiles(settings.externalProfiles.map((item) => item.id === profile.id ? { ...item, xc_username: event.target.value } : item))}
-                          onBlur={async (event) => {
-                            const response = await api.updateExternalProfile(profile.id, { xcUsername: event.target.value });
-                            setExternalProfiles(response.profiles);
-                          }}
-                        />
-                      </label>
-                      <div className="rounded-md border border-line bg-mist p-2">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-ink/50">XC password</div>
-                        <div className="mt-1 break-all font-mono text-xs">{profile.xc_password}</div>
-                      </div>
+                      {!isEmbyProfile && (
+                        <>
+                          <label className="grid gap-1 font-medium">
+                            XC username
+                            <input
+                              className="min-h-10 rounded-md border border-line px-3"
+                              value={profile.xc_username}
+                              onChange={(event) => setExternalProfiles(settings.externalProfiles.map((item) => item.id === profile.id ? { ...item, xc_username: event.target.value } : item))}
+                              onBlur={async (event) => {
+                                const response = await api.updateExternalProfile(profile.id, { xcUsername: event.target.value });
+                                setExternalProfiles(response.profiles);
+                              }}
+                            />
+                          </label>
+                          <div className="rounded-md border border-line bg-mist p-2">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-ink/50">XC password</div>
+                            <div className="mt-1 break-all font-mono text-xs">{profile.xc_password}</div>
+                          </div>
+                        </>
+                      )}
                     </div>
                     <div className="mt-3 grid gap-2 text-sm">
                       {internal && (
@@ -666,7 +671,7 @@ export function AdminPage() {
                           <div className="flex flex-wrap gap-2">
                             <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} internal M3U`, internal.m3u)}><Copy size={15} /> M3U {profile.output_mode === "mpegts" ? "TS" : "HLS"}</button>
                             <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} internal XMLTV`, internal.xmltv)}><Copy size={15} /> XMLTV</button>
-                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} XC server`, internal.xcServer)}><Copy size={15} /> XC server</button>
+                            {!isEmbyProfile && <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} XC server`, internal.xcServer)}><Copy size={15} /> XC server</button>}
                           </div>
                         </div>
                       )}
@@ -676,7 +681,7 @@ export function AdminPage() {
                           <div className="flex flex-wrap gap-2">
                             <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} public M3U`, external.m3u)}><Copy size={15} /> M3U {profile.output_mode === "mpegts" ? "TS" : "HLS"}</button>
                             <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} public XMLTV`, external.xmltv)}><Copy size={15} /> XMLTV</button>
-                            <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} XC M3U`, external.xcM3u)}><Copy size={15} /> XC M3U {profile.output_mode === "mpegts" ? "TS" : "HLS"}</button>
+                            {!isEmbyProfile && <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 font-semibold" onClick={() => copyText(`${profile.name} XC M3U`, external.xcM3u)}><Copy size={15} /> XC M3U {profile.output_mode === "mpegts" ? "TS" : "HLS"}</button>}
                           </div>
                         </div>
                       )}
@@ -686,10 +691,12 @@ export function AdminPage() {
                         const response = await api.regenerateExternalToken(profile.id);
                         setExternalProfiles(response.profiles);
                       }}><KeyRound size={15} /> Regenerate token</button>
-                      <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 text-sm font-semibold" onClick={async () => {
-                        const response = await api.regenerateExternalPassword(profile.id);
-                        setExternalProfiles(response.profiles);
-                      }}><KeyRound size={15} /> Reset XC password</button>
+                      {!isEmbyProfile && (
+                        <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line px-3 text-sm font-semibold" onClick={async () => {
+                          const response = await api.regenerateExternalPassword(profile.id);
+                          setExternalProfiles(response.profiles);
+                        }}><KeyRound size={15} /> Reset XC password</button>
+                      )}
                     </div>
                   </article>
                 );
