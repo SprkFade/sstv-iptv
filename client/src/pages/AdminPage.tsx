@@ -173,7 +173,7 @@ export function AdminPage() {
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
   });
-  const visibleDiagnostics = filteredDiagnostics.slice(0, 300);
+  const visibleDiagnostics = filteredDiagnostics.slice(0, 25);
 
   const settingsPayload = () => ({
     ...settings,
@@ -900,7 +900,16 @@ export function AdminPage() {
           ))}
         </div>
         <div className="mt-3 hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[1080px] text-left text-sm">
+          <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
+            <colgroup>
+              <col className="w-[18%]" />
+              <col className="w-[12%]" />
+              <col className="w-[13%]" />
+              <col className="w-[14%]" />
+              <col className="w-[20%]" />
+              <col className="w-[12%]" />
+              <col className="w-[11%]" />
+            </colgroup>
             <thead className="border-b border-line text-ink/60">
               <tr>
                 <th className="py-2">Channel</th>
@@ -934,8 +943,8 @@ export function AdminPage() {
                       </div>
                     )}
                   </td>
-                  <td>
-                    <span className={`rounded-md px-2 py-1 text-xs font-bold ${
+                  <td className="pr-3">
+                    <span className={`inline-flex min-w-28 justify-center whitespace-nowrap rounded-md px-2 py-1 text-xs font-bold ${
                       diagnostic.xmltv_match_method === "tvg-id"
                         ? "bg-accent/15 text-accent"
                         : diagnostic.xmltv_match_method === "fuzzy"
@@ -948,7 +957,7 @@ export function AdminPage() {
                     </span>
                   </td>
                   <td>
-                    <div className="flex max-w-md flex-wrap gap-1">
+                    <div className="flex max-w-64 flex-wrap gap-1">
                       {diagnostic.warnings.map((warning) => (
                         <span key={warning} className="rounded-md border border-line bg-mist px-2 py-1 text-xs text-ink/70">{warning}</span>
                       ))}
