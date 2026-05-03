@@ -50,6 +50,7 @@ export function migrate() {
       display_name TEXT NOT NULL,
       logo_url TEXT,
       logo_cache_path TEXT,
+      source_id TEXT,
       group_title TEXT,
       stream_url TEXT NOT NULL,
       xmltv_channel_id TEXT,
@@ -144,9 +145,11 @@ export function migrate() {
   `);
 
   addColumnIfMissing(database, "channels", "channel_number", "INTEGER");
+  addColumnIfMissing(database, "channels", "source_id", "TEXT");
   addColumnIfMissing(database, "channels", "sort_order", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing(database, "channel_groups", "use_channel_name_for_epg", "INTEGER NOT NULL DEFAULT 0");
   database.exec("CREATE INDEX IF NOT EXISTS idx_channels_enabled_sort ON channels(enabled, channel_number, sort_order, display_name);");
+  database.exec("CREATE INDEX IF NOT EXISTS idx_channels_source_id ON channels(source_id);");
   database.exec("CREATE INDEX IF NOT EXISTS idx_channel_groups_enabled_sort ON channel_groups(enabled, sort_order, name);");
   backfillExistingChannelGroups(database);
 

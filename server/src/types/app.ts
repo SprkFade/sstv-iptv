@@ -46,6 +46,7 @@ export interface ProviderProfile {
 }
 
 export interface ParsedM3uChannel {
+  sourceId?: string;
   tvgId: string;
   tvgName: string;
   displayName: string;

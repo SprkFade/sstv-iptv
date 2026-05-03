@@ -86,6 +86,7 @@ export async function fetchXcChannels(credentials: XcCredentials): Promise<Parse
       const tvgId = stream.epg_channel_id?.trim() || stream.custom_sid?.trim() || "";
       const groupTitle = categoryNames.get(String(stream.category_id ?? "")) ?? "Ungrouped";
       return {
+        sourceId: streamId ? `xc:${streamId}` : undefined,
         tvgId,
         tvgName: displayName,
         displayName,

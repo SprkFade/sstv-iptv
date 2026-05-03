@@ -179,19 +179,19 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
 
         const findChannel = ingestDb.prepare(
           `SELECT id FROM channels
-         WHERE (tvg_id IS NOT NULL AND tvg_id != '' AND tvg_id = ?)
+         WHERE (source_id IS NOT NULL AND source_id != '' AND source_id = ?)
             OR stream_url = ?
-         ORDER BY CASE WHEN tvg_id = ? THEN 0 ELSE 1 END
+         ORDER BY CASE WHEN source_id = ? THEN 0 ELSE 1 END
          LIMIT 1`
         );
         const insertChannel = ingestDb.prepare(
           `INSERT INTO channels
-         (tvg_id, tvg_name, display_name, logo_url, group_title, stream_url, xmltv_channel_id, channel_number, sort_order, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+         (source_id, tvg_id, tvg_name, display_name, logo_url, group_title, stream_url, xmltv_channel_id, channel_number, sort_order, enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
         );
         const updateChannel = ingestDb.prepare(
           `UPDATE channels
-         SET tvg_id = ?, tvg_name = ?, display_name = ?, logo_url = ?, group_title = ?,
+         SET source_id = ?, tvg_id = ?, tvg_name = ?, display_name = ?, logo_url = ?, group_title = ?,
              stream_url = ?, xmltv_channel_id = ?, channel_number = ?, sort_order = ?,
              enabled = 1, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`
@@ -205,11 +205,13 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
         for (let index = 0; index < sourceChannels.length; index += 1) {
           const channel = sourceChannels[index];
           const xmltvMatch = matches.get(index);
-          const existing = findChannel.get(channel.tvgId, channel.streamUrl, channel.tvgId) as
+          const sourceId = channel.sourceId ?? "";
+          const existing = findChannel.get(sourceId, channel.streamUrl, sourceId) as
             | { id: number }
             | undefined;
 
           const values = [
+            sourceId,
             channel.tvgId,
             channel.tvgName,
             channel.displayName,
