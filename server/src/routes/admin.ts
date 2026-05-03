@@ -259,6 +259,79 @@ adminRouter.get("/users", (_req, res) => {
   res.json({ users: rows });
 });
 
+type StreamMonitor = ReturnType<typeof getActiveStreamMonitor>;
+type StreamMonitorStream = StreamMonitor["streams"][number];
+type StreamMonitorClient = StreamMonitorStream["clients"][number];
+type EmbySession = Awaited<ReturnType<typeof listEmbySessions>>["sessions"][number];
+
+function embyRemoteIp(remoteEndPoint: string) {
+  const value = remoteEndPoint.trim();
+  if (!value) return "";
+  if (value.startsWith("[")) return value.slice(1, value.indexOf("]"));
+  const ipv4WithPort = value.match(/^(\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?$/);
+  if (ipv4WithPort) return ipv4WithPort[1];
+  return value;
+}
+
+function embyClientLabel(session: EmbySession) {
+  return [session.client, session.deviceName, session.deviceId ? `Device ${session.deviceId}` : ""]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function embyDisplayClient(session: EmbySession, baseClient: StreamMonitorClient | undefined, index: number, total: number): StreamMonitorClient {
+  const lastActivityTime = Date.parse(session.lastActivityDate);
+  const lastSeenTime = Number.isFinite(lastActivityTime) ? lastActivityTime : Date.now();
+  const share = Math.max(1, total);
+  return {
+    id: session.id ? `emby-${session.id}` : `emby-${session.userId || session.deviceId || index}`,
+    bytesServed: baseClient ? Math.floor(baseClient.bytesServed / share) : 0,
+    externalProfileId: baseClient?.externalProfileId ?? null,
+    externalProfileName: baseClient?.externalProfileName ?? "Emby",
+    firstSeen: baseClient?.firstSeen ?? new Date(lastSeenTime).toISOString(),
+    ip: embyRemoteIp(session.remoteEndPoint) || baseClient?.ip || "unknown",
+    lastPlaylistAt: baseClient?.lastPlaylistAt ?? null,
+    lastRequestKind: baseClient?.lastRequestKind ?? "stream",
+    lastSeen: new Date(lastSeenTime).toISOString(),
+    lastSeenAgeMs: Math.max(0, Date.now() - lastSeenTime),
+    lastSegmentAt: baseClient?.lastSegmentAt ?? null,
+    lastSegmentName: baseClient?.lastSegmentName ?? "",
+    playlistRequests: baseClient ? Math.floor(baseClient.playlistRequests / share) : 0,
+    providerProfileId: baseClient?.providerProfileId ?? null,
+    providerProfileName: baseClient?.providerProfileName ?? null,
+    providerProfileUsername: baseClient?.providerProfileUsername ?? null,
+    role: "emby",
+    segmentRequests: baseClient ? Math.floor(baseClient.segmentRequests / share) : 0,
+    source: "external",
+    userAgent: embyClientLabel(session) || baseClient?.userAgent || "Emby",
+    userId: null,
+    username: session.userName || session.userId || baseClient?.username || "Emby user"
+  };
+}
+
+function withEmbyDisplayClients(stream: StreamMonitorStream, embySessions: EmbySession[]) {
+  const matchingSessions = embySessions.filter((session) => session.nowPlaying?.sstvChannelId === stream.channelId);
+  if (matchingSessions.length === 0) {
+    return { ...stream, embySessions: matchingSessions };
+  }
+
+  const embyBaseClients = stream.clients.filter((client) => client.externalProfileName?.toLowerCase() === "emby");
+  if (embyBaseClients.length === 0) {
+    return { ...stream, embySessions: matchingSessions };
+  }
+
+  const nonEmbyClients = stream.clients.filter((client) => client.externalProfileName?.toLowerCase() !== "emby");
+  const embyClients = matchingSessions.map((session, index) => embyDisplayClient(session, embyBaseClients[index] ?? embyBaseClients[0], index, matchingSessions.length));
+  const clients = [...embyClients, ...nonEmbyClients].sort((a, b) => a.lastSeenAgeMs - b.lastSeenAgeMs);
+
+  return {
+    ...stream,
+    clients,
+    clientCount: clients.length,
+    embySessions: matchingSessions
+  };
+}
+
 adminRouter.get("/streams", async (_req, res) => {
   const monitor = getActiveStreamMonitor();
   const status = embyStatus();
@@ -273,13 +346,12 @@ adminRouter.get("/streams", async (_req, res) => {
       embySessionError = error instanceof Error ? error.message : String(error);
     }
   }
+  const streams = monitor.streams.map((stream) => withEmbyDisplayClients(stream, embySessions));
 
   res.json({
     ...monitor,
-    streams: monitor.streams.map((stream) => ({
-      ...stream,
-      embySessions: embySessions.filter((session) => session.nowPlaying?.sstvChannelId === stream.channelId)
-    })),
+    activeClientCount: streams.reduce((total, stream) => total + stream.clientCount, 0),
+    streams,
     connectionLogs: listStreamConnectionLogs(),
     embySessions,
     embySessionError
