@@ -5,7 +5,7 @@ A production-oriented, mobile-first IPTV guide that imports live channels from a
 ## Features
 
 - XtremeCodes and XMLTV ingestion with channel matching by EPG id, channel name, normalized name, then conservative fuzzy match.
-- Transaction-safe refreshes with run history, manual admin refresh, and scheduled refresh checks.
+- Transaction-safe refreshes with run history, manual admin refresh, interval scheduling, and optional time-of-day scheduling.
 - First-launch setup wizard for admin credentials, XtremeCodes login, guide settings, refresh cadence, and Plex server selection.
 - Plex OAuth for regular users with configured server access validation.
 - Channel browsing, groups, current airing view, search, favorites, and channel playback.
@@ -63,7 +63,7 @@ The launch wizard collects:
 - admin username and password
 - XtremeCodes server URL, username, and password
 - XMLTV guide URL, optional; blank uses the XtremeCodes XMLTV endpoint
-- refresh interval
+- refresh interval; optional scheduled refresh times can be added later from the Admin page
 - Plex login, server selection, and token storage
 
 Set a long random `SESSION_SECRET` before exposing the app.

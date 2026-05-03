@@ -360,6 +360,7 @@ export const api = {
     xcPasswordSet: boolean;
     xmltvUrl: string;
     refreshIntervalHours: number;
+    refreshScheduleTimes: string[];
     plexServerIdentifier: string;
     ffmpegHlsInputMode: "direct" | "pipe";
     ffmpegHlsDvrWindowMinutes: number;
@@ -379,6 +380,7 @@ export const api = {
     xcPassword?: string;
     xmltvUrl: string;
     refreshIntervalHours: number;
+    refreshScheduleTimes: string[];
     plexServerIdentifier: string;
     ffmpegHlsInputMode: "direct" | "pipe";
     ffmpegHlsDvrWindowMinutes: number;

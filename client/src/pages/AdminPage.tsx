@@ -41,6 +41,16 @@ function formatMatchScore(value: number | null | undefined) {
   return value.toFixed(2);
 }
 
+function formatScheduleTime(value: string) {
+  const [rawHour, rawMinute] = value.split(":");
+  const hour = Number(rawHour);
+  const minute = Number(rawMinute);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return value;
+  const hour12 = hour % 12 || 12;
+  const period = hour >= 12 ? "PM" : "AM";
+  return `${hour12}:${String(minute).padStart(2, "0")} ${period}`;
+}
+
 function trimBaseUrl(value: string) {
   return value.replace(/\/+$/, "");
 }
@@ -71,6 +81,7 @@ export function AdminPage() {
   const [embyApiKey, setEmbyApiKey] = useState("");
   const [embyTasks, setEmbyTasks] = useState<EmbyTask[]>([]);
   const [loadingEmbyTasks, setLoadingEmbyTasks] = useState(false);
+  const [refreshTimeDraft, setRefreshTimeDraft] = useState("02:00");
   const [refreshStatus, setRefreshStatus] = useState<RefreshProgress | null>(null);
   const [now, setNow] = useState(Date.now());
   const [providerDraft, setProviderDraft] = useState({
@@ -154,6 +165,19 @@ export function AdminPage() {
 
   const setExternalProfiles = (profiles: ExternalProfile[]) => setSettings({ ...settings, externalProfiles: profiles });
   const setProviderProfiles = (profiles: ProviderProfile[]) => setSettings({ ...settings, providerProfiles: profiles });
+  const addRefreshScheduleTime = () => {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(refreshTimeDraft)) return;
+    setSettings({
+      ...settings,
+      refreshScheduleTimes: Array.from(new Set([...settings.refreshScheduleTimes, refreshTimeDraft])).sort()
+    });
+  };
+  const removeRefreshScheduleTime = (time: string) => {
+    setSettings({
+      ...settings,
+      refreshScheduleTimes: settings.refreshScheduleTimes.filter((item) => item !== time)
+    });
+  };
   const filteredDiagnostics = epgDiagnostics.filter((diagnostic) => {
     const query = epgSearch.trim().toLowerCase();
     if (!query) return true;
@@ -427,10 +451,50 @@ export function AdminPage() {
             </div>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            <label className="grid gap-1 text-sm font-medium">
-              Refresh interval hours
-              <input className="min-h-11 w-full min-w-0 rounded-md border border-line px-3" type="number" min={1} max={168} value={settings.refreshIntervalHours} onChange={(event) => setSettings({ ...settings, refreshIntervalHours: Number(event.target.value) })} />
-            </label>
+            <div className="grid gap-3 rounded-md border border-line bg-mist p-3">
+              <label className="grid gap-1 text-sm font-medium">
+                Refresh interval hours
+                <input className="min-h-11 w-full min-w-0 rounded-md border border-line px-3" type="number" min={1} max={168} value={settings.refreshIntervalHours} onChange={(event) => setSettings({ ...settings, refreshIntervalHours: Number(event.target.value) })} />
+              </label>
+              <div className="grid gap-2">
+                <div>
+                  <h2 className="text-sm font-bold">Scheduled refresh times</h2>
+                  <p className="mt-1 text-xs text-ink/60">Optional. When one or more times are set, automatic refreshes run at those server-local times instead of using the interval.</p>
+                </div>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="grid min-w-36 flex-1 gap-1 text-sm font-medium">
+                    Time
+                    <input
+                      className="min-h-10 w-full min-w-0 rounded-md border border-line px-3"
+                      type="time"
+                      value={refreshTimeDraft}
+                      onChange={(event) => setRefreshTimeDraft(event.target.value)}
+                    />
+                  </label>
+                  <button type="button" className="min-h-10 rounded-md border border-line px-3 text-sm font-semibold" onClick={addRefreshScheduleTime}>
+                    Add time
+                  </button>
+                </div>
+                {settings.refreshScheduleTimes.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {settings.refreshScheduleTimes.map((time) => (
+                      <button
+                        key={time}
+                        type="button"
+                        className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line bg-panel px-3 text-sm font-semibold"
+                        onClick={() => removeRefreshScheduleTime(time)}
+                        title="Remove scheduled time"
+                      >
+                        {formatScheduleTime(time)}
+                        <span className="text-ink/50">×</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-ink/55">No scheduled times set. Interval scheduling is active.</p>
+                )}
+              </div>
+            </div>
             <label className="grid gap-1 text-sm font-medium">
               Plex server identifier
               <input className="min-h-11 w-full min-w-0 rounded-md border border-line px-3" value={settings.plexServerIdentifier} onChange={(event) => setSettings({ ...settings, plexServerIdentifier: event.target.value })} />

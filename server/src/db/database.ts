@@ -220,6 +220,8 @@ function seedSettings() {
   insert.run("xc_password", config.xcPassword);
   insert.run("xmltv_url", config.xmltvUrl);
   insert.run("refresh_interval_hours", String(config.refreshIntervalHours));
+  insert.run("refresh_schedule_times", "");
+  insert.run("last_scheduled_refresh_key", "");
   insert.run("plex_server_identifier", config.plexServerIdentifier);
   insert.run("plex_token", config.plexToken);
   insert.run("plex_product_name", config.plexProductName);
