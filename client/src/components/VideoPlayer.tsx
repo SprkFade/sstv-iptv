@@ -138,6 +138,8 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
   const [retryKey, setRetryKey] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("Preparing stream...");
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
+  const [stalled, setStalled] = useState(false);
+  const manualResumeRef = useRef<(() => void) | null>(null);
   const mobile = false;
   const transcodeHlsSrc = useMemo(() => `/api/stream/${channelId}/hls/index.m3u8?clientSession=${encodeURIComponent(clientSession)}`, [channelId, clientSession]);
 
@@ -148,6 +150,8 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
     setError("");
     setLoadingMessage("Preparing stream...");
     setPlaybackBlocked(false);
+    setStalled(false);
+    manualResumeRef.current = null;
     video.removeAttribute("src");
     video.load();
 
@@ -304,6 +308,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
             browserBlockedAutoPlay = false;
             if (!disposed) {
               setPlaybackBlocked(false);
+              setStalled(false);
               setError("");
             }
           })
@@ -319,7 +324,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
           });
       }
     };
-    const jumpBufferedGap = (reason: string) => {
+    const jumpBufferedGap = (reason: string, source: "recovery" | "user" = "recovery") => {
       if (disposed || bufferedGapRecoveries >= 12) return false;
       const target = bufferedGapTarget();
       if (target === null || !Number.isFinite(target)) return false;
@@ -327,7 +332,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
       if (!hls) nativeGapRecoveries += 1;
       trace(`buffer gap recovery ${bufferedGapRecoveries}/12: ${reason}; seeking to ${target.toFixed(1)} (${playerState()})`);
       video.currentTime = target;
-      requestPlayback("recovery");
+      requestPlayback(source);
       return true;
     };
     const clearStallTimer = () => {
@@ -357,12 +362,13 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
       hls?.startLoad(-1);
       requestPlayback("recovery");
     };
-    const recoverFromStall = () => {
-      if (disposed || video.paused || video.ended) return;
+    const recoverFromStall = (force = false) => {
+      if (disposed || video.ended || (!force && video.paused)) return;
       const now = Date.now();
-      if (now - lastRecoveryAt < 5000) return;
+      if (!force && now - lastRecoveryAt < 3000) return;
       lastRecoveryAt = now;
       softRecoveries += 1;
+      if (!disposed) setStalled(true);
       trace(`stall recovery started (${playerState()})`);
       if (hls?.liveSyncPosition && Number.isFinite(hls.liveSyncPosition)) {
         const drift = Math.abs(video.currentTime - hls.liveSyncPosition);
@@ -380,8 +386,8 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
       }
       hls?.startLoad(-1);
       hls?.recoverMediaError();
-      requestPlayback("recovery");
-      if (softRecoveries >= 3 && now - lastProgressAt > 15_000) {
+      requestPlayback(force ? "user" : "recovery");
+      if (softRecoveries >= 2 && now - lastProgressAt > 9_000) {
         hardResetPlayer("playback clock did not resume after hls.js recovery");
       }
     };
@@ -393,9 +399,19 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
         return;
       }
       trace(`video stalled/waiting; recovery scheduled (${playerState()})`);
+      setStalled(true);
       if (jumpBufferedGap("buffer gap detected")) return;
       clearStallTimer();
-      stallTimer = window.setTimeout(recoverFromStall, hls ? 8000 : 2500);
+      stallTimer = window.setTimeout(() => recoverFromStall(), hls ? 1500 : 1000);
+    };
+    manualResumeRef.current = () => {
+      trace(`manual playback recovery requested (${playerState()})`);
+      setStalled(false);
+      setPlaybackBlocked(false);
+      if (!jumpBufferedGap("manual recovery", "user")) {
+        recoverFromStall(true);
+      }
+      requestPlayback("user");
     };
     const onVideoError = () => {
       if (jumpBufferedGap("media error near buffered gap")) return;
@@ -409,11 +425,13 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
       clearStallTimer();
       if (mobile) {
         setPlaybackBlocked(false);
+        setStalled(false);
         return;
       }
       void requestWakeLock();
       trace(`video playing (${playerState()})`);
       setPlaybackBlocked(false);
+      setStalled(false);
     };
     const onProgressing = () => {
       if (Math.abs(video.currentTime - lastVideoTime) > 0.1) {
@@ -422,6 +440,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
         softRecoveries = 0;
         nativeGapRecoveries = 0;
         bufferedGapRecoveries = 0;
+        setStalled(false);
       }
       clearStallTimer();
     };
@@ -461,8 +480,8 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
         hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
-          liveSyncDurationCount: 10,
-          liveMaxLatencyDurationCount: 45,
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 18,
           maxLiveSyncPlaybackRate: 1.25,
           liveDurationInfinity: true,
           maxBufferLength: 60,
@@ -555,7 +574,8 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
             return;
           }
           const stalledMs = Date.now() - lastProgressAt;
-          if (stalledMs > 10_000) {
+          if (stalledMs > 6_000) {
+            setStalled(true);
             trace(`watchdog detected ${Math.round(stalledMs / 1000)}s without playback progress (${playerState()})`);
             recoverFromStall();
           }
@@ -570,6 +590,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
 
     return () => {
       disposed = true;
+      manualResumeRef.current = null;
       prepareAbort?.abort();
       hls?.destroy();
       clearStallTimer();
@@ -624,6 +645,35 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
               <Play size={30} fill="currentColor" />
             </span>
           </button>
+        )}
+        {stalled && !loadingMessage && !playbackBlocked && !error && (
+          <div className="absolute inset-0 z-10 grid place-items-center bg-black/45 p-4 text-white backdrop-blur-[1px]">
+            <div className="grid justify-items-center gap-3 text-center">
+              <button
+                className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur transition hover:bg-white/25"
+                onClick={() => {
+                  if (manualResumeRef.current) {
+                    manualResumeRef.current();
+                    return;
+                  }
+                  setRetryKey((value) => value + 1);
+                }}
+                aria-label="Resume stream"
+              >
+                <Play size={30} fill="currentColor" />
+              </button>
+              <div>
+                <p className="text-sm font-semibold">Stream stalled</p>
+                <p className="text-xs text-white/70">Tap to resume or reset the stream.</p>
+              </div>
+              <button
+                className="inline-flex min-h-9 items-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 text-xs font-semibold transition hover:bg-white/15"
+                onClick={() => setRetryKey((value) => value + 1)}
+              >
+                <RotateCcw size={14} /> Retry stream
+              </button>
+            </div>
+          </div>
         )}
       </div>
       {error && (
