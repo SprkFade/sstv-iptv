@@ -166,6 +166,33 @@ export interface StreamMonitorClient {
   username: string;
 }
 
+export interface EmbyNowPlayingSession {
+  id: string;
+  userId: string;
+  userName: string;
+  client: string;
+  deviceName: string;
+  deviceId: string;
+  remoteEndPoint: string;
+  lastActivityDate: string;
+  playState: {
+    isPaused: boolean | null;
+    playMethod: string;
+    positionTicks: number | null;
+  };
+  nowPlaying: {
+    id: string;
+    name: string;
+    type: string;
+    mediaType: string;
+    channelId: string;
+    channelName: string;
+    mediaSourceId: string;
+    mediaSourcePath: string;
+    sstvChannelId: number | null;
+  } | null;
+}
+
 export interface StreamMonitorStream {
   active: boolean;
   channelId: number;
@@ -193,6 +220,7 @@ export interface StreamMonitorStream {
   segmentRequests: number;
   startedAt: string;
   tempFileCount: number;
+  embySessions?: EmbyNowPlayingSession[];
 }
 
 export interface StreamConnectionLog {
@@ -227,6 +255,8 @@ export interface StreamConnectionLog {
 export interface StreamMonitor {
   activeClientCount: number;
   connectionLogs: StreamConnectionLog[];
+  embySessions: EmbyNowPlayingSession[];
+  embySessionError: string;
   providerConnectionCount: number;
   refreshedAt: string;
   streamCount: number;
@@ -430,6 +460,7 @@ export const api = {
   }) =>
     request<{ ok: true }>("/api/admin/settings", { method: "PUT", body: JSON.stringify(body) }),
   embyTasks: () => request<{ tasks: EmbyTask[]; suggestedTaskId: string }>("/api/admin/emby/tasks"),
+  embySessions: () => request<{ sessions: EmbyNowPlayingSession[] }>("/api/admin/emby/sessions"),
   triggerEmbyRefresh: () => request<{ ok: true; taskId: string; message: string }>("/api/admin/emby/trigger", { method: "POST" }),
   refresh: () => request<{ started: boolean; progress: RefreshProgress }>("/api/admin/refresh", { method: "POST" }),
   refreshStatus: () => request<RefreshProgress>("/api/admin/refresh-status"),

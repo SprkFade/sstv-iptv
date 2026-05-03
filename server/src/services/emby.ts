@@ -21,6 +21,33 @@ export interface EmbyStatus {
   lastTriggeredAt: string;
 }
 
+export interface EmbyNowPlayingSession {
+  id: string;
+  userId: string;
+  userName: string;
+  client: string;
+  deviceName: string;
+  deviceId: string;
+  remoteEndPoint: string;
+  lastActivityDate: string;
+  playState: {
+    isPaused: boolean | null;
+    playMethod: string;
+    positionTicks: number | null;
+  };
+  nowPlaying: {
+    id: string;
+    name: string;
+    type: string;
+    mediaType: string;
+    channelId: string;
+    channelName: string;
+    mediaSourceId: string;
+    mediaSourcePath: string;
+    sstvChannelId: number | null;
+  } | null;
+}
+
 function boolSetting(key: string, fallback = false) {
   const value = setting(key, fallback ? "true" : "false").toLowerCase();
   return value === "true" || value === "1" || value === "yes";
@@ -53,6 +80,49 @@ function getEmbyFetchHeaders() {
 
 function asString(value: unknown) {
   return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+function asNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function asBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : null;
+}
+
+function record(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function recordArray(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => record(item)) : [];
+}
+
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    const text = asString(value).trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function parseSstvChannelId(...values: unknown[]) {
+  const text = values.map((value) => asString(value)).filter(Boolean).join(" ");
+  const tvgMatch = text.match(/\bsstv-(\d+)\b/i);
+  if (tvgMatch) return Number(tvgMatch[1]);
+
+  const tokenMatch = text.match(/\/external\/live\/[^/\s]+\/(\d+)(?:\.ts|\/hls|\/|(?:\?|$))/i);
+  if (tokenMatch) return Number(tokenMatch[1]);
+
+  const xcMatch = text.match(/\/live\/[^/\s]+\/[^/\s]+\/(\d+)(?:\.ts|\/hls|\/|(?:\?|$))/i);
+  if (xcMatch) return Number(xcMatch[1]);
+
+  return null;
 }
 
 function mapTask(task: Record<string, unknown>): EmbyTask {
@@ -98,6 +168,77 @@ export function embyStatus(): EmbyStatus {
   };
 }
 
+function mapEmbySession(session: Record<string, unknown>): EmbyNowPlayingSession {
+  const item = record(session.NowPlayingItem ?? session.nowPlayingItem);
+  const playState = record(session.PlayState ?? session.playState);
+  const mediaSources = recordArray(item.MediaSources ?? item.mediaSources);
+  const mediaSource = mediaSources[0] ?? {};
+  const mediaSourcePath = firstString(
+    item.Path,
+    item.path,
+    item.Url,
+    item.url,
+    item.MediaUrl,
+    item.mediaUrl,
+    mediaSource.Path,
+    mediaSource.path,
+    mediaSource.Url,
+    mediaSource.url
+  );
+  const mediaSourceId = firstString(
+    item.MediaSourceId,
+    item.mediaSourceId,
+    mediaSource.Id,
+    mediaSource.id
+  );
+  const channelId = firstString(
+    item.ChannelId,
+    item.channelId,
+    item.ExternalId,
+    item.externalId,
+    item.ProviderIds && record(item.ProviderIds).Sstv,
+    item.ProviderIds && record(item.ProviderIds).XmlTv
+  );
+  const channelName = firstString(item.ChannelName, item.channelName, item.SeriesName, item.seriesName);
+  const itemName = firstString(item.Name, item.name);
+  const itemId = firstString(item.Id, item.id);
+  const sstvChannelId = parseSstvChannelId(
+    itemId,
+    channelId,
+    channelName,
+    itemName,
+    mediaSourceId,
+    mediaSourcePath
+  );
+
+  return {
+    id: firstString(session.Id, session.id),
+    userId: firstString(session.UserId, session.userId),
+    userName: firstString(session.UserName, session.userName),
+    client: firstString(session.Client, session.client),
+    deviceName: firstString(session.DeviceName, session.deviceName),
+    deviceId: firstString(session.DeviceId, session.deviceId),
+    remoteEndPoint: firstString(session.RemoteEndPoint, session.remoteEndPoint),
+    lastActivityDate: firstString(session.LastActivityDate, session.lastActivityDate),
+    playState: {
+      isPaused: asBoolean(playState.IsPaused ?? playState.isPaused),
+      playMethod: firstString(playState.PlayMethod, playState.playMethod),
+      positionTicks: asNumber(playState.PositionTicks ?? playState.positionTicks)
+    },
+    nowPlaying: Object.keys(item).length === 0 ? null : {
+      id: itemId,
+      name: itemName,
+      type: firstString(item.Type, item.type),
+      mediaType: firstString(item.MediaType, item.mediaType),
+      channelId,
+      channelName,
+      mediaSourceId,
+      mediaSourcePath,
+      sstvChannelId
+    }
+  };
+}
+
 export async function listEmbyTasks() {
   const { baseUrl, apiKey } = embyCredentials();
   if (!baseUrl || !apiKey) throw new Error("Emby server URL and API key are required.");
@@ -116,6 +257,26 @@ export async function listEmbyTasks() {
   const suggestedTask = [...tasks].sort((a, b) => guideTaskScore(b) - guideTaskScore(a))[0] ?? null;
   const suggestedTaskId = suggestedTask && guideTaskScore(suggestedTask) > 0 ? suggestedTask.id : "";
   return { tasks, suggestedTaskId };
+}
+
+export async function listEmbySessions() {
+  const { baseUrl, apiKey } = embyCredentials();
+  if (!baseUrl || !apiKey) throw new Error("Emby server URL and API key are required.");
+
+  const response = await fetch(embyApiPath(baseUrl, "/Sessions?IsPlaying=true"), {
+    headers: getEmbyFetchHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(`Emby sessions request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const body = await response.json();
+  if (!Array.isArray(body)) throw new Error("Emby returned an unexpected sessions response.");
+  return {
+    sessions: body
+      .map((session) => mapEmbySession(record(session)))
+      .filter((session) => session.id || session.userName || session.nowPlaying)
+  };
 }
 
 export async function triggerEmbyGuideRefresh(taskId?: string) {

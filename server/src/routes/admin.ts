@@ -6,7 +6,7 @@ import { plexAdminStatus } from "../services/plex.js";
 import { applyDefaultGroupSort, groupNameSql, listChannelGroups, listGroupPrefixes, recalculateChannelNumbers, saveDefaultGroupPrefixOrder } from "../services/channelGroups.js";
 import { getActiveStreamMonitor, listStreamConnectionLogs } from "./stream.js";
 import { listExternalProfiles, regenerateExternalToken, regenerateExternalXcPassword, updateExternalProfile } from "../services/externalAccess.js";
-import { embyStatus, listEmbyTasks, triggerEmbyGuideRefresh } from "../services/emby.js";
+import { embyStatus, listEmbySessions, listEmbyTasks, triggerEmbyGuideRefresh } from "../services/emby.js";
 import {
   createProviderProfile,
   deleteProviderProfile,
@@ -141,6 +141,14 @@ adminRouter.get("/emby/tasks", async (_req, res, next) => {
   }
 });
 
+adminRouter.get("/emby/sessions", async (_req, res, next) => {
+  try {
+    res.json(await listEmbySessions());
+  } catch (error) {
+    next(error);
+  }
+});
+
 adminRouter.post("/emby/trigger", async (_req, res, next) => {
   try {
     res.json(await triggerEmbyGuideRefresh());
@@ -251,10 +259,30 @@ adminRouter.get("/users", (_req, res) => {
   res.json({ users: rows });
 });
 
-adminRouter.get("/streams", (_req, res) => {
+adminRouter.get("/streams", async (_req, res) => {
+  const monitor = getActiveStreamMonitor();
+  const status = embyStatus();
+  let embySessions: Awaited<ReturnType<typeof listEmbySessions>>["sessions"] = [];
+  let embySessionError = "";
+
+  if (status.enabled && status.configured) {
+    try {
+      const snapshot = await listEmbySessions();
+      embySessions = snapshot.sessions;
+    } catch (error) {
+      embySessionError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   res.json({
-    ...getActiveStreamMonitor(),
-    connectionLogs: listStreamConnectionLogs()
+    ...monitor,
+    streams: monitor.streams.map((stream) => ({
+      ...stream,
+      embySessions: embySessions.filter((session) => session.nowPlaying?.sstvChannelId === stream.channelId)
+    })),
+    connectionLogs: listStreamConnectionLogs(),
+    embySessions,
+    embySessionError
   });
 });
 
