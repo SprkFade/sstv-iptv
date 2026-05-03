@@ -51,6 +51,20 @@ function formatScheduleTime(value: string) {
   return `${hour12}:${String(minute).padStart(2, "0")} ${period}`;
 }
 
+function formatServerTime(value: number, timeZone: string) {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZone: timeZone && timeZone !== "local" ? timeZone : undefined,
+      timeZoneName: "short"
+    }).format(new Date(value));
+  } catch {
+    return new Date(value).toLocaleTimeString();
+  }
+}
+
 function trimBaseUrl(value: string) {
   return value.replace(/\/+$/, "");
 }
@@ -137,10 +151,9 @@ export function AdminPage() {
   }, [refreshing, refreshStatus?.active]);
 
   useEffect(() => {
-    if (!refreshStatus?.active) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [refreshStatus?.active]);
+  }, []);
 
   useEffect(() => {
     if (!message) return;
@@ -450,7 +463,7 @@ export function AdminPage() {
               </button>
             </div>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid items-start gap-3 md:grid-cols-2">
             <div className="grid gap-3 rounded-md border border-line bg-mist p-3">
               <label className="grid gap-1 text-sm font-medium">
                 Refresh interval hours
@@ -460,6 +473,10 @@ export function AdminPage() {
                 <div>
                   <h2 className="text-sm font-bold">Scheduled refresh times</h2>
                   <p className="mt-1 text-xs text-ink/60">Optional. When one or more times are set, automatic refreshes run at those server-local times instead of using the interval.</p>
+                  <p className="mt-2 rounded-md border border-line bg-panel px-3 py-2 text-xs font-semibold text-ink/75">
+                    Server time: {formatServerTime(now, settings.serverTimeZone)}
+                    {settings.serverTimeZone && settings.serverTimeZone !== "local" ? ` · ${settings.serverTimeZone}` : ""}
+                  </p>
                 </div>
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="grid min-w-36 flex-1 gap-1 text-sm font-medium">

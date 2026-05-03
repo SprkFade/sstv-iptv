@@ -361,6 +361,8 @@ export const api = {
     xmltvUrl: string;
     refreshIntervalHours: number;
     refreshScheduleTimes: string[];
+    serverTime: string;
+    serverTimeZone: string;
     plexServerIdentifier: string;
     ffmpegHlsInputMode: "direct" | "pipe";
     ffmpegHlsDvrWindowMinutes: number;

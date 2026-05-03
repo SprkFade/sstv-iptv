@@ -30,6 +30,8 @@ adminRouter.get("/settings", async (_req, res, next) => {
         .split(",")
         .map((time) => time.trim())
         .filter(Boolean),
+      serverTime: new Date().toISOString(),
+      serverTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "local",
       plexServerIdentifier: setting("plex_server_identifier"),
       ffmpegHlsInputMode: setting("ffmpeg_hls_input_mode", "direct"),
       ffmpegReconnectDelayMax: Number(setting("ffmpeg_reconnect_delay_max", "5")),
