@@ -137,6 +137,35 @@ export function migrate() {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS stream_connection_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      connection_id TEXT NOT NULL,
+      output_type TEXT NOT NULL CHECK(output_type IN ('hls', 'mpegts')),
+      channel_id INTEGER,
+      channel_number INTEGER,
+      channel_name TEXT NOT NULL,
+      group_title TEXT,
+      client_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      user_id INTEGER,
+      role TEXT NOT NULL,
+      source TEXT NOT NULL,
+      external_profile_id INTEGER,
+      external_profile_name TEXT,
+      provider_profile_id INTEGER,
+      provider_profile_name TEXT,
+      ip TEXT NOT NULL,
+      user_agent TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      runtime_seconds INTEGER,
+      stop_reason TEXT,
+      bytes_served INTEGER NOT NULL DEFAULT 0,
+      playlist_requests INTEGER NOT NULL DEFAULT 0,
+      segment_requests INTEGER NOT NULL DEFAULT 0,
+      last_request_kind TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_channels_enabled_group ON channels(enabled, group_title);
     CREATE INDEX IF NOT EXISTS idx_channels_tvg_id ON channels(tvg_id);
     CREATE INDEX IF NOT EXISTS idx_channels_stream_url ON channels(stream_url);
@@ -150,6 +179,8 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_external_profiles_token ON external_profiles(token);
     CREATE INDEX IF NOT EXISTS idx_external_profiles_xc ON external_profiles(xc_username, xc_password);
     CREATE INDEX IF NOT EXISTS idx_provider_profiles_order ON provider_profiles(enabled, sort_order, id);
+    CREATE INDEX IF NOT EXISTS idx_stream_connection_logs_started ON stream_connection_logs(started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_stream_connection_logs_active ON stream_connection_logs(ended_at);
   `);
 
   addColumnIfMissing(database, "channels", "channel_number", "INTEGER");
@@ -172,6 +203,7 @@ export function migrate() {
   seedExternalProfiles();
   seedProviderProfiles();
   closeInterruptedRefreshRuns();
+  closeInterruptedStreamConnectionLogs();
 }
 
 function addColumnIfMissing(database: Database.Database, table: string, column: string, definition: string) {
@@ -207,6 +239,18 @@ function closeInterruptedRefreshRuns() {
            finished_at = CURRENT_TIMESTAMP,
            error = COALESCE(NULLIF(error, ''), 'Refresh interrupted by app restart.')
        WHERE status = 'running'`
+    )
+    .run();
+}
+
+function closeInterruptedStreamConnectionLogs() {
+  getDb()
+    .prepare(
+      `UPDATE stream_connection_logs
+       SET ended_at = CURRENT_TIMESTAMP,
+           runtime_seconds = MAX(0, unixepoch(CURRENT_TIMESTAMP) - unixepoch(started_at)),
+           stop_reason = COALESCE(NULLIF(stop_reason, ''), 'App restarted before disconnect was recorded.')
+       WHERE ended_at IS NULL`
     )
     .run();
 }

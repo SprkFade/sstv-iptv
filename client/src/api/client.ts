@@ -195,8 +195,38 @@ export interface StreamMonitorStream {
   tempFileCount: number;
 }
 
+export interface StreamConnectionLog {
+  id: number;
+  connection_id: string;
+  output_type: "hls" | "mpegts";
+  channel_id: number | null;
+  channel_number: number | null;
+  channel_name: string;
+  group_title: string | null;
+  client_id: string;
+  username: string;
+  user_id: number | null;
+  role: string;
+  source: "browser" | "external";
+  external_profile_id: number | null;
+  external_profile_name: string | null;
+  provider_profile_id: number | null;
+  provider_profile_name: string | null;
+  ip: string;
+  user_agent: string;
+  started_at: string;
+  ended_at: string | null;
+  runtime_seconds: number | null;
+  stop_reason: string | null;
+  bytes_served: number;
+  playlist_requests: number;
+  segment_requests: number;
+  last_request_kind: "playlist" | "segment" | "stream";
+}
+
 export interface StreamMonitor {
   activeClientCount: number;
+  connectionLogs: StreamConnectionLog[];
   providerConnectionCount: number;
   refreshedAt: string;
   streamCount: number;

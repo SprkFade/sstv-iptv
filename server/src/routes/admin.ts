@@ -4,7 +4,7 @@ import { getDb, setSetting, setting } from "../db/database.js";
 import { getRefreshProgress, startRefreshGuide } from "../ingest/refresh.js";
 import { plexAdminStatus } from "../services/plex.js";
 import { applyDefaultGroupSort, groupNameSql, listChannelGroups, listGroupPrefixes, recalculateChannelNumbers, saveDefaultGroupPrefixOrder } from "../services/channelGroups.js";
-import { getActiveStreamMonitor } from "./stream.js";
+import { getActiveStreamMonitor, listStreamConnectionLogs } from "./stream.js";
 import { listExternalProfiles, regenerateExternalToken, regenerateExternalXcPassword, updateExternalProfile } from "../services/externalAccess.js";
 import { embyStatus, listEmbyTasks, triggerEmbyGuideRefresh } from "../services/emby.js";
 import {
@@ -252,7 +252,10 @@ adminRouter.get("/users", (_req, res) => {
 });
 
 adminRouter.get("/streams", (_req, res) => {
-  res.json(getActiveStreamMonitor());
+  res.json({
+    ...getActiveStreamMonitor(),
+    connectionLogs: listStreamConnectionLogs()
+  });
 });
 
 adminRouter.get("/external-profiles", (_req, res) => {

@@ -15,6 +15,24 @@ function formatDuration(ms: number | null | undefined) {
   return `${hours}h ${minutes % 60}m`;
 }
 
+function formatRuntimeSeconds(seconds: number | null | undefined) {
+  if (seconds === null || seconds === undefined) return "Active";
+  return formatDuration(seconds * 1000);
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -251,6 +269,81 @@ export function StreamsPage() {
                   </div>
                 )}
               </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="min-w-0 overflow-hidden rounded-md border border-line bg-panel p-4 shadow-soft">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-xl font-bold">Connection log</h2>
+            <p className="text-sm text-ink/60">Recent stream client starts, stops, run time, and disconnect reasons.</p>
+          </div>
+        </div>
+
+        {!loading && monitor?.connectionLogs.length === 0 && (
+          <div className="mt-4 rounded-md border border-line bg-mist p-6 text-center text-sm text-ink/60">
+            No stream connections have been logged yet.
+          </div>
+        )}
+
+        <div className="mt-4 hidden overflow-x-auto rounded-md border border-line md:block">
+          <table className="w-full min-w-[980px] text-left text-sm">
+            <thead className="bg-mist text-xs uppercase tracking-wide text-ink/50">
+              <tr>
+                <th className="px-3 py-2">Client</th>
+                <th className="px-3 py-2">Channel</th>
+                <th className="px-3 py-2">Started</th>
+                <th className="px-3 py-2">Ended</th>
+                <th className="px-3 py-2">Runtime</th>
+                <th className="px-3 py-2">Reason</th>
+                <th className="px-3 py-2">Served</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {monitor?.connectionLogs.map((log) => (
+                <tr key={log.id} className="align-top">
+                  <td className="px-3 py-3">
+                    <div className="font-bold">{log.username}</div>
+                    <div className="text-xs text-ink/55">{log.ip} · {compactUserAgent(log.user_agent)}</div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      <span className="rounded-md border border-line px-2 py-0.5 text-xs text-ink/60">{log.source}</span>
+                      <span className="rounded-md border border-line px-2 py-0.5 text-xs text-ink/60">{log.output_type.toUpperCase()}</span>
+                      {log.external_profile_name && <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-0.5 text-xs text-accent">{log.external_profile_name}</span>}
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="font-bold">{log.channel_number ? `CH ${log.channel_number}` : log.channel_id ? `ID ${log.channel_id}` : ""} {log.channel_name}</div>
+                    <div className="text-xs text-ink/55">{log.group_title || "No group"}</div>
+                    {log.provider_profile_name && <div className="mt-1 text-xs font-semibold text-accent">Provider {log.provider_profile_name}</div>}
+                  </td>
+                  <td className="px-3 py-3 text-ink/75">{formatDateTime(log.started_at)}</td>
+                  <td className="px-3 py-3 text-ink/75">{log.ended_at ? formatDateTime(log.ended_at) : "Active"}</td>
+                  <td className="px-3 py-3 font-semibold">{formatRuntimeSeconds(log.runtime_seconds)}</td>
+                  <td className="px-3 py-3 text-ink/75">{log.stop_reason || "Active"}</td>
+                  <td className="px-3 py-3">
+                    <div className="font-semibold">{formatBytes(log.bytes_served)}</div>
+                    <div className="text-xs text-ink/55">{log.playlist_requests}/{log.segment_requests} requests</div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:hidden">
+          {monitor?.connectionLogs.map((log) => (
+            <article key={log.id} className="rounded-md border border-line bg-mist p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-bold">{log.username}</span>
+                <span className="rounded-md border border-line px-2 py-0.5 text-xs text-ink/60">{log.output_type.toUpperCase()}</span>
+                <span className="rounded-md border border-line px-2 py-0.5 text-xs text-ink/60">{log.ended_at ? "Ended" : "Active"}</span>
+              </div>
+              <div className="mt-2 font-semibold">{log.channel_number ? `CH ${log.channel_number}` : ""} {log.channel_name}</div>
+              <div className="mt-1 text-ink/60">{formatDateTime(log.started_at)} · {formatRuntimeSeconds(log.runtime_seconds)}</div>
+              <div className="mt-1 text-ink/60">{log.stop_reason || "Active"} · {formatBytes(log.bytes_served)}</div>
+              <div className="mt-1 truncate text-xs text-ink/50">{log.ip} · {compactUserAgent(log.user_agent)}</div>
             </article>
           ))}
         </div>

@@ -44,6 +44,7 @@ type MpegTsSession = {
   bytesServed: number;
   channelId: number;
   client: HlsClientStats;
+  connectionLogId: number | null;
   events: Array<{ at: string; message: string }>;
   exited: boolean;
   exitCode: number | null;
@@ -89,6 +90,7 @@ function isBrokenPipeError(error: unknown) {
 type HlsClientStats = {
   id: string;
   bytesServed: number;
+  connectionLogId: number | null;
   externalProfileId: number | null;
   externalProfileName: string | null;
   firstSeen: number;
@@ -262,10 +264,11 @@ async function waitForReadyPlaylist(dir: string, timeoutMs: number, minSegments 
   throw new Error("Timed out waiting for FFmpeg HLS playlist to become ready");
 }
 
-function stopHlsSession(channelId: number) {
+function stopHlsSession(channelId: number, reason = "HLS session stopped") {
   const session = hlsSessions.get(channelId);
   if (!session) return;
   hlsSessions.delete(channelId);
+  finishHlsSessionConnectionLogs(session, reason);
   session.inputAbort?.abort();
   if (!session.process.killed) session.process.kill("SIGTERM");
 }
@@ -275,13 +278,14 @@ export function stopAllHlsSessions(reason = "server shutdown") {
   for (const channelId of channelIds) {
     const session = hlsSessions.get(channelId);
     if (session) recordSessionEvent(session, `Stopping stream session: ${reason}.`);
-    stopHlsSession(channelId);
+    stopHlsSession(channelId, reason);
   }
   const tsSessionIds = [...mpegTsSessions.keys()];
   for (const sessionId of tsSessionIds) {
     const session = mpegTsSessions.get(sessionId);
     if (!session) continue;
     recordMpegTsSessionEvent(session, `Stopping MPEG-TS stream session: ${reason}.`);
+    finishConnectionLog(session.client, reason, Date.now());
     session.inputAbort?.abort();
     if (!session.process.killed) session.process.kill("SIGTERM");
     mpegTsSessions.delete(sessionId);
@@ -329,6 +333,115 @@ function recordMpegTsSessionEvent(session: MpegTsSession, message: string) {
   session.events = [...session.events, { at: new Date().toISOString(), message }].slice(-STREAM_EVENT_BUFFER_LENGTH);
 }
 
+function channelConnectionSnapshot(channelId: number) {
+  return getDb()
+    .prepare(
+      `SELECT id, display_name, group_title, channel_number
+       FROM channels
+       WHERE id = ?`
+    )
+    .get(channelId) as { id: number; display_name: string; group_title: string | null; channel_number: number | null } | undefined;
+}
+
+function startConnectionLog(channelId: number, outputType: StreamOutputType, client: HlsClientStats, startedAt = client.firstSeen) {
+  const channel = channelConnectionSnapshot(channelId);
+  return Number(getDb()
+    .prepare(
+      `INSERT INTO stream_connection_logs (
+         connection_id, output_type, channel_id, channel_number, channel_name, group_title,
+         client_id, username, user_id, role, source, external_profile_id, external_profile_name,
+         provider_profile_id, provider_profile_name, ip, user_agent, started_at,
+         bytes_served, playlist_requests, segment_requests, last_request_kind
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      `${outputType}-${channelId}-${client.id}-${startedAt}`,
+      outputType,
+      channelId,
+      channel?.channel_number ?? null,
+      channel?.display_name ?? `Channel ${channelId}`,
+      channel?.group_title ?? "",
+      client.id,
+      client.username,
+      client.userId,
+      client.role,
+      client.source,
+      client.externalProfileId,
+      client.externalProfileName,
+      client.providerProfileId,
+      client.providerProfileName,
+      client.ip,
+      client.userAgent,
+      new Date(startedAt).toISOString(),
+      client.bytesServed,
+      client.playlistRequests,
+      client.segmentRequests,
+      client.lastRequestKind
+    ).lastInsertRowid);
+}
+
+function updateConnectionLog(client: HlsClientStats) {
+  if (!client.connectionLogId) return;
+  getDb()
+    .prepare(
+      `UPDATE stream_connection_logs
+       SET bytes_served = ?,
+           playlist_requests = ?,
+           segment_requests = ?,
+           last_request_kind = ?
+       WHERE id = ?`
+    )
+    .run(client.bytesServed, client.playlistRequests, client.segmentRequests, client.lastRequestKind, client.connectionLogId);
+}
+
+function finishConnectionLog(client: HlsClientStats, reason: string, endedAt = Date.now()) {
+  if (!client.connectionLogId) return;
+  getDb()
+    .prepare(
+      `UPDATE stream_connection_logs
+       SET ended_at = ?,
+           runtime_seconds = MAX(0, unixepoch(?) - unixepoch(started_at)),
+           stop_reason = ?,
+           bytes_served = ?,
+           playlist_requests = ?,
+           segment_requests = ?,
+           last_request_kind = ?
+       WHERE id = ? AND ended_at IS NULL`
+    )
+    .run(
+      new Date(endedAt).toISOString(),
+      new Date(endedAt).toISOString(),
+      reason,
+      client.bytesServed,
+      client.playlistRequests,
+      client.segmentRequests,
+      client.lastRequestKind,
+      client.connectionLogId
+    );
+}
+
+function finishHlsSessionConnectionLogs(session: HlsSession, reason: string) {
+  for (const client of session.clients.values()) {
+    finishConnectionLog(client, reason, client.lastSeen || Date.now());
+  }
+}
+
+export function listStreamConnectionLogs(limit = 100) {
+  return getDb()
+    .prepare(
+      `SELECT id, connection_id, output_type, channel_id, channel_number, channel_name, group_title,
+              client_id, username, user_id, role, source, external_profile_id, external_profile_name,
+              provider_profile_id, provider_profile_name, ip, user_agent, started_at, ended_at,
+              runtime_seconds, stop_reason, bytes_served, playlist_requests, segment_requests,
+              last_request_kind
+       FROM stream_connection_logs
+       ORDER BY id DESC
+       LIMIT ?`
+    )
+    .all(limit) as Array<Record<string, string | number | null>>;
+}
+
 function shortClientId(value: string) {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -348,6 +461,7 @@ function streamClientBase(req: AuthedRequest, kind: HlsRequestKind, now = Date.n
   return {
     id: shortClientId(key),
     bytesServed: 0,
+    connectionLogId: null,
     externalProfileId: externalProfile?.id ?? null,
     externalProfileName: externalProfile?.name ?? null,
     firstSeen: now,
@@ -395,7 +509,10 @@ function hlsClientKey(req: AuthedRequest) {
 
 function pruneSessionClients(session: HlsSession, now = Date.now()) {
   for (const [key, client] of session.clients) {
-    if (now - client.lastSeen > HLS_CLIENT_ACTIVE_MS) session.clients.delete(key);
+    if (now - client.lastSeen > HLS_CLIENT_ACTIVE_MS) {
+      finishConnectionLog(client, "HLS client inactive", client.lastSeen);
+      session.clients.delete(key);
+    }
   }
 }
 
@@ -418,6 +535,7 @@ function shouldStopInactivePlaybackSession(session: HlsSession, now = Date.now()
 
 function recordHlsClientRequest(
   req: AuthedRequest,
+  channelId: number,
   session: HlsSession,
   kind: HlsRequestKind,
   segmentName = "",
@@ -435,6 +553,7 @@ function recordHlsClientRequest(
   const client: HlsClientStats = existing ?? {
     id: shortClientId(key),
     bytesServed: 0,
+    connectionLogId: null,
     externalProfileId: externalProfile?.id ?? null,
     externalProfileName: externalProfile?.name ?? null,
     firstSeen: now,
@@ -467,12 +586,19 @@ function recordHlsClientRequest(
     client.lastSegmentAt = now;
     client.lastSegmentName = segmentName;
   }
+  if (!existing && !client.connectionLogId) {
+    client.connectionLogId = startConnectionLog(channelId, "hls", client, client.firstSeen);
+  }
+  updateConnectionLog(client);
   session.clients.set(key, client);
 }
 
 function releaseHlsClient(req: AuthedRequest, session: HlsSession) {
   const key = hlsClientKey(req);
-  if (!session.clients.delete(key)) return false;
+  const client = session.clients.get(key);
+  if (!client) return false;
+  finishConnectionLog(client, "Player released stream", Date.now());
+  session.clients.delete(key);
   recordSessionEvent(session, `Released playback client ${shortClientId(key)}.`);
   return true;
 }
@@ -909,7 +1035,7 @@ export function getActiveStreamMonitor() {
     .flatMap(([channelId, session]) => {
       if (shouldStopInactivePlaybackSession(session, now)) {
         recordSessionEvent(session, "No active segment clients remain; stopping FFmpeg session.");
-        stopHlsSession(channelId);
+        stopHlsSession(channelId, "No active segment clients remain");
         return [];
       }
       const channel = channelById.get(channelId);
@@ -1077,7 +1203,7 @@ function ensureHlsSession(channelId: number, sourceStreamUrl: string) {
     return existing;
   }
 
-  stopHlsSession(channelId);
+  stopHlsSession(channelId, "Replacing HLS session");
 
   const providerProfile = selectProviderProfile();
   const streamUrl = providerProfile ? providerStreamUrl(sourceStreamUrl, providerProfile) : sourceStreamUrl;
@@ -1169,6 +1295,7 @@ function ensureHlsSession(channelId: number, sourceStreamUrl: string) {
     session.exited = true;
     session.stderr = appendStderr(session.stderr, error.message);
     recordSessionEvent(session, `FFmpeg process error: ${error.message}`);
+    finishHlsSessionConnectionLogs(session, `FFmpeg process error: ${error.message}`);
   });
 
   ffmpeg.on("close", (code) => {
@@ -1176,6 +1303,7 @@ function ensureHlsSession(channelId: number, sourceStreamUrl: string) {
     session.exitCode = code;
     session.inputAbort?.abort();
     recordSessionEvent(session, `FFmpeg exited with code ${code ?? "unknown"}.`);
+    finishHlsSessionConnectionLogs(session, `FFmpeg exited with code ${code ?? "unknown"}`);
     if (Date.now() - session.lastAccess < HLS_IDLE_TIMEOUT_MS) {
       console.warn("FFmpeg HLS transcode exited", {
         channelId,
@@ -1194,10 +1322,10 @@ setInterval(() => {
   for (const [channelId, session] of hlsSessions) {
     if (shouldStopInactivePlaybackSession(session, now)) {
       recordSessionEvent(session, "No active segment clients remain; stopping idle FFmpeg session.");
-      stopHlsSession(channelId);
+      stopHlsSession(channelId, "No active segment clients remain");
       continue;
     }
-    if (now - session.lastAccess > HLS_IDLE_TIMEOUT_MS) stopHlsSession(channelId);
+    if (now - session.lastAccess > HLS_IDLE_TIMEOUT_MS) stopHlsSession(channelId, "HLS session idle timeout");
   }
 }, 5_000).unref();
 
@@ -1259,7 +1387,7 @@ streamRouter.post("/:channelId/hls/release", (req: AuthedRequest, res) => {
   releaseHlsClient(req, session);
   if (shouldStopInactivePlaybackSession(session)) {
     recordSessionEvent(session, "No active segment clients remain after player release; stopping FFmpeg session.");
-    stopHlsSession(channelId);
+    stopHlsSession(channelId, "Player released stream");
     return res.json({ ok: true, stopped: true });
   }
 
@@ -1294,7 +1422,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
         return res.status(409).json({ error: "HLS session is stale. Reload the player to start a fresh stream." });
       }
       recordSessionEvent(session, "HLS producer appears stale; restarting FFmpeg session.");
-      stopHlsSession(channelId);
+      stopHlsSession(channelId, "HLS producer stale restart");
       session = ensureHlsSession(channelId, channel.stream_url);
     }
     const now = Date.now();
@@ -1318,7 +1446,7 @@ streamRouter.get("/:channelId/hls/:file", async (req: AuthedRequest, res, next) 
       await waitForFile(filePath, 10_000);
     }
     const servedBytes = await fs.promises.stat(filePath).then((stat) => stat.size).catch(() => 0);
-    recordHlsClientRequest(req, session, file === "index.m3u8" ? "playlist" : "segment", file === "index.m3u8" ? "" : file, servedBytes);
+    recordHlsClientRequest(req, channelId, session, file === "index.m3u8" ? "playlist" : "segment", file === "index.m3u8" ? "" : file, servedBytes);
 
     res.setHeader("cache-control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.setHeader("pragma", "no-cache");
@@ -1395,6 +1523,7 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
   client.segmentRequests = 1;
   client.lastSegmentAt = now;
   client.lastSegmentName = "mpeg-ts";
+  client.connectionLogId = startConnectionLog(channelId, "mpegts", client, now);
   const sessionId = `${channelId}|${client.id}|${now}`;
   let stderr = "";
   let inputBytes = 0;
@@ -1403,6 +1532,7 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
     bytesServed: 0,
     channelId,
     client,
+    connectionLogId: client.connectionLogId,
     events: [],
     exited: false,
     exitCode: null,
@@ -1440,6 +1570,7 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
     session.lastAccess = Date.now();
     session.client.lastSeen = session.lastAccess;
     recordMpegTsSessionEvent(session, "MPEG-TS client disconnected; stopping transcode stream.");
+    finishConnectionLog(session.client, "Client disconnected", session.lastAccess);
     inputAbort.abort();
     ffmpeg.stdout.unpipe(res);
     if (!ffmpeg.killed) ffmpeg.kill("SIGTERM");
@@ -1463,6 +1594,7 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
     session.client.bytesServed = session.bytesServed;
     session.lastAccess = Date.now();
     session.client.lastSeen = session.lastAccess;
+    updateConnectionLog(session.client);
   });
   ffmpeg.stdout.on("error", (error) => {
     if (closedByClient || isBrokenPipeError(error)) {
@@ -1475,6 +1607,7 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
   ffmpeg.on("error", (error) => {
     session.exited = true;
     recordMpegTsSessionEvent(session, `FFmpeg process error: ${error.message}`);
+    finishConnectionLog(session.client, `FFmpeg process error: ${error.message}`, Date.now());
     if (closedByClient) return;
     if (!res.headersSent) {
       return res.status(500).json({
@@ -1489,6 +1622,7 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
     session.exitCode = code;
     session.lastAccess = Date.now();
     recordMpegTsSessionEvent(session, `FFmpeg MPEG-TS transcode exited with code ${code ?? "unknown"}.`);
+    finishConnectionLog(session.client, closedByClient ? "Client disconnected" : `FFmpeg exited with code ${code ?? "unknown"}`, session.lastAccess);
     setTimeout(() => {
       const current = mpegTsSessions.get(sessionId);
       if (current?.exited) mpegTsSessions.delete(sessionId);
