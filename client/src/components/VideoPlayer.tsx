@@ -170,6 +170,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
     let softRecoveries = 0;
     let hardRecoveries = 0;
     let nativeGapRecoveries = 0;
+    let bufferedGapRecoveries = 0;
     let browserBlockedAutoPlay = false;
     let wakeLock: ScreenWakeLockSentinel | null = null;
     let audioOnlyStream = false;
@@ -318,12 +319,13 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
           });
       }
     };
-    const jumpNativeHlsGap = (reason: string) => {
-      if (disposed || hls || nativeGapRecoveries >= 8) return false;
+    const jumpBufferedGap = (reason: string) => {
+      if (disposed || bufferedGapRecoveries >= 12) return false;
       const target = bufferedGapTarget();
       if (target === null || !Number.isFinite(target)) return false;
-      nativeGapRecoveries += 1;
-      trace(`native HLS gap recovery ${nativeGapRecoveries}/8: ${reason}; seeking to ${target.toFixed(1)} (${playerState()})`);
+      bufferedGapRecoveries += 1;
+      if (!hls) nativeGapRecoveries += 1;
+      trace(`buffer gap recovery ${bufferedGapRecoveries}/12: ${reason}; seeking to ${target.toFixed(1)} (${playerState()})`);
       video.currentTime = target;
       requestPlayback("recovery");
       return true;
@@ -391,12 +393,12 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
         return;
       }
       trace(`video stalled/waiting; recovery scheduled (${playerState()})`);
-      if (jumpNativeHlsGap("buffer gap detected")) return;
+      if (jumpBufferedGap("buffer gap detected")) return;
       clearStallTimer();
       stallTimer = window.setTimeout(recoverFromStall, hls ? 8000 : 2500);
     };
     const onVideoError = () => {
-      if (jumpNativeHlsGap("media error near buffered gap")) return;
+      if (jumpBufferedGap("media error near buffered gap")) return;
       if (!hls && hardRecoveries < 2) {
         hardResetPlayer("native HLS media error");
         return;
@@ -419,6 +421,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
         lastVideoTime = video.currentTime;
         softRecoveries = 0;
         nativeGapRecoveries = 0;
+        bufferedGapRecoveries = 0;
       }
       clearStallTimer();
     };
@@ -497,6 +500,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
           trace(`hls.js ${data.fatal ? "fatal " : ""}${data.type}:${data.details} (${playerState()})`);
           const details = String(data.details ?? "");
           if (!data.fatal && /buffer|stalled|nudge/i.test(details)) {
+            if (jumpBufferedGap(`hls.js ${details}`)) return;
             scheduleStallRecovery();
             return;
           }
