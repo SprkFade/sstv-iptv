@@ -149,29 +149,31 @@ export function StreamsPage() {
             <article key={`${stream.outputType}-${stream.channelId}`} className="overflow-hidden rounded-md border border-line bg-mist">
               <div className="grid gap-3 p-4">
                 <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <ChannelLogo src={stream.channelLogoUrl} name={stream.channelName} size="sm" />
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-md border border-line px-2 py-1 text-xs font-bold text-ink/70">
-                          {stream.channelNumber ? `CH ${stream.channelNumber}` : `ID ${stream.channelId}`}
+                  <div className="grid min-w-0 gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md border border-line px-2 py-1 text-xs font-bold text-ink/70">
+                        {stream.channelNumber ? `CH ${stream.channelNumber}` : `ID ${stream.channelId}`}
+                      </span>
+                      <span className={`rounded-md px-2 py-1 text-xs font-bold ${stream.active ? "bg-accent text-white" : "bg-rose-500 text-white"}`}>
+                        {stream.active ? "Running" : `Exited ${stream.exitCode ?? ""}`}
+                      </span>
+                      <span className="rounded-md border border-line px-2 py-1 text-xs font-bold text-ink/70">
+                        {stream.outputType === "mpegts" ? "MPEG-TS" : "HLS"}
+                      </span>
+                      {stream.providerProfileName && (
+                        <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-xs font-bold text-accent">
+                          Provider {stream.providerProfileName}
                         </span>
-                        <span className={`rounded-md px-2 py-1 text-xs font-bold ${stream.active ? "bg-accent text-white" : "bg-rose-500 text-white"}`}>
-                          {stream.active ? "Running" : `Exited ${stream.exitCode ?? ""}`}
-                        </span>
-                        <span className="rounded-md border border-line px-2 py-1 text-xs font-bold text-ink/70">
-                          {stream.outputType === "mpegts" ? "MPEG-TS" : "HLS"}
-                        </span>
-                        {stream.providerProfileName && (
-                          <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-xs font-bold text-accent">
-                            Provider {stream.providerProfileName}
-                          </span>
-                        )}
-                        {stream.mode === "videoOnly" && <span className="rounded-md bg-gold/20 px-2 py-1 text-xs font-bold text-gold">Video only</span>}
-                        {stream.mode === "audioOnly" && <span className="rounded-md bg-accent/15 px-2 py-1 text-xs font-bold text-accent">Audio only</span>}
+                      )}
+                      {stream.mode === "videoOnly" && <span className="rounded-md bg-gold/20 px-2 py-1 text-xs font-bold text-gold">Video only</span>}
+                      {stream.mode === "audioOnly" && <span className="rounded-md bg-accent/15 px-2 py-1 text-xs font-bold text-accent">Audio only</span>}
+                    </div>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <ChannelLogo src={stream.channelLogoUrl} name={stream.channelName} size="sm" />
+                      <div className="min-w-0">
+                        <h3 className="truncate text-lg font-bold">{stream.channelName}</h3>
+                        <p className="text-sm text-ink/60">{stream.groupTitle || "No group"} · {stream.inputMode === "ffmpeg-direct" ? "Direct FFmpeg input" : "Node pipe input"}</p>
                       </div>
-                      <h3 className="mt-2 truncate text-lg font-bold">{stream.channelName}</h3>
-                      <p className="text-sm text-ink/60">{stream.groupTitle || "No group"} · {stream.inputMode === "ffmpeg-direct" ? "Direct FFmpeg input" : "Node pipe input"}</p>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 lg:justify-end">
