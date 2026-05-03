@@ -170,7 +170,6 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
     let softRecoveries = 0;
     let hardRecoveries = 0;
     let nativeGapRecoveries = 0;
-    let browserBlockedAutoPlay = false;
     let wakeLock: ScreenWakeLockSentinel | null = null;
     let audioOnlyStream = false;
     const release = () => releaseStreamClient(channelId, clientSession);
@@ -284,14 +283,10 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
       }
       throw new Error(lastError || "Timed out preparing the FFmpeg HLS stream.");
     };
-    const requestPlayback = (source: "initial" | "recovery" | "user" = "initial") => {
+    const requestPlayback = () => {
       if (disposed) return;
       if (mobile) {
         trace(`mobile playback left to native controls (${playerState()})`);
-        return;
-      }
-      if (source === "recovery" && (browserBlockedAutoPlay || playbackBlocked)) {
-        trace(`recovery play deferred until user gesture (${playerState()})`);
         return;
       }
       trace(`play requested (${playerState()})`);
@@ -300,20 +295,10 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
         playRequest
           .then(() => {
             trace(`play started (${playerState()})`);
-            browserBlockedAutoPlay = false;
-            if (!disposed) {
-              setPlaybackBlocked(false);
-              setError("");
-            }
+            if (!disposed) setPlaybackBlocked(false);
           })
-          .catch((err) => {
-            const message = err instanceof Error ? err.message : "unknown error";
-            trace(`play blocked by browser during ${source} request: ${message} (${playerState()})`);
-            if (source === "user") {
-              browserBlockedAutoPlay = false;
-              return;
-            }
-            browserBlockedAutoPlay = true;
+          .catch(() => {
+            trace(`play blocked by browser (${playerState()})`);
             if (!disposed) setPlaybackBlocked(true);
           });
       }
@@ -325,7 +310,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
       nativeGapRecoveries += 1;
       trace(`native HLS gap recovery ${nativeGapRecoveries}/8: ${reason}; seeking to ${target.toFixed(1)} (${playerState()})`);
       video.currentTime = target;
-      requestPlayback("recovery");
+      requestPlayback();
       return true;
     };
     const clearStallTimer = () => {
@@ -353,7 +338,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
       hls?.stopLoad();
       hls?.recoverMediaError();
       hls?.startLoad(-1);
-      requestPlayback("recovery");
+      requestPlayback();
     };
     const recoverFromStall = () => {
       if (disposed || video.paused || video.ended) return;
@@ -378,7 +363,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
       }
       hls?.startLoad(-1);
       hls?.recoverMediaError();
-      requestPlayback("recovery");
+      requestPlayback();
       if (softRecoveries >= 3 && now - lastProgressAt > 15_000) {
         hardResetPlayer("playback clock did not resume after hls.js recovery");
       }
@@ -446,7 +431,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
         if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = transcodeHlsSrc;
           trace("using native HLS playback");
-          if (!mobile) video.addEventListener("canplay", () => requestPlayback("initial"), { once: true });
+          if (!mobile) video.addEventListener("canplay", requestPlayback, { once: true });
           return;
         }
 
@@ -516,7 +501,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
             console.warn("Recovering FFmpeg HLS media error", data);
             hls?.recoverMediaError();
             hls?.startLoad(-1);
-            requestPlayback("recovery");
+            requestPlayback();
             return;
           }
           hlsError = true;
@@ -531,7 +516,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
         });
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           trace("hls.js manifest parsed");
-          if (!mobile) requestPlayback("initial");
+          if (!mobile) requestPlayback();
         });
         hls.attachMedia(video);
         watchdogTimer = window.setInterval(() => {
@@ -610,10 +595,7 @@ function ManagedVideoPlayer({ channelId, title, onTrace }: VideoPlayerProps) {
             onClick={() => {
               const video = videoRef.current;
               if (!video) return;
-              setPlaybackBlocked(false);
-              void video.play()
-                .then(() => setPlaybackBlocked(false))
-                .catch(() => setPlaybackBlocked(true));
+              void video.play().then(() => setPlaybackBlocked(false));
             }}
           >
             <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-white/15 backdrop-blur">
