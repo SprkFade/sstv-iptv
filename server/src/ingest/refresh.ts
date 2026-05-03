@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { Worker } from "node:worker_threads";
 import Database from "better-sqlite3";
 import { config, ensureRuntimeDirs } from "../config.js";
 import { getDb, setting, setSetting } from "../db/database.js";
@@ -46,7 +47,9 @@ let progress: RefreshProgress = {
   updatedAt: null,
   error: ""
 };
-let refreshInFlight: Promise<Awaited<ReturnType<typeof refreshGuide>>> | null = null;
+let refreshInFlight: Promise<unknown> | null = null;
+let refreshWorker: Worker | null = null;
+let progressReporter: ((progress: RefreshProgress) => void) | null = null;
 
 function setProgress(update: Partial<RefreshProgress>) {
   progress = {
@@ -54,10 +57,15 @@ function setProgress(update: Partial<RefreshProgress>) {
     ...update,
     updatedAt: new Date().toISOString()
   };
+  progressReporter?.(progress);
 }
 
 export function getRefreshProgress() {
   return progress;
+}
+
+export function setRefreshProgressReporter(reporter: ((progress: RefreshProgress) => void) | null) {
+  progressReporter = reporter;
 }
 
 export function isRefreshRunning() {
@@ -66,8 +74,77 @@ export function isRefreshRunning() {
 
 export function startRefreshGuide() {
   if (refreshInFlight) return { started: false, progress };
-  refreshInFlight = refreshGuide().finally(() => {
+
+  setProgress({
+    active: true,
+    runId: null,
+    stage: "Starting refresh",
+    detail: "Starting background refresh worker.",
+    channelCount: 0,
+    programCount: 0,
+    totalProgramCount: 0,
+    savedChannelCount: 0,
+    savedProgramCount: 0,
+    matchedCount: 0,
+    startedAt: new Date().toISOString(),
+    error: ""
+  });
+
+  const worker = new Worker(new URL("./refreshWorker.js", import.meta.url));
+  refreshWorker = worker;
+  let settled = false;
+  refreshInFlight = new Promise((resolve, reject) => {
+    worker.on("message", (message: unknown) => {
+      if (!message || typeof message !== "object") return;
+      const payload = message as
+        | { type: "progress"; progress: RefreshProgress }
+        | { type: "done"; result: unknown }
+        | { type: "error"; error: string };
+      if (payload.type === "progress") {
+        progress = payload.progress;
+        return;
+      }
+      if (payload.type === "done") {
+        settled = true;
+        resolve(payload.result);
+        return;
+      }
+      if (payload.type === "error") {
+        settled = true;
+        setProgress({
+          active: false,
+          stage: "Refresh failed",
+          detail: payload.error,
+          error: payload.error
+        });
+        reject(new Error(payload.error));
+      }
+    });
+    worker.on("error", (error) => {
+      settled = true;
+      setProgress({
+        active: false,
+        stage: "Refresh failed",
+        detail: error.message,
+        error: error.message
+      });
+      reject(error);
+    });
+    worker.on("exit", (code) => {
+      if (!settled && code !== 0) {
+        const message = `Refresh worker exited unexpectedly with code ${code}.`;
+        setProgress({
+          active: false,
+          stage: "Refresh failed",
+          detail: message,
+          error: message
+        });
+        reject(new Error(message));
+      }
+    });
+  }).finally(() => {
     refreshInFlight = null;
+    refreshWorker = null;
   });
   refreshInFlight.catch(() => undefined);
   return { started: true, progress };
@@ -100,6 +177,7 @@ function openIngestDb() {
   const ingestDb = new Database(config.databasePath);
   ingestDb.pragma("journal_mode = WAL");
   ingestDb.pragma("foreign_keys = ON");
+  ingestDb.pragma("busy_timeout = 5000");
   return ingestDb;
 }
 
