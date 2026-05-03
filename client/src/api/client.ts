@@ -166,6 +166,7 @@ export interface StreamMonitorStream {
   clientCount: number;
   clients: StreamMonitorClient[];
   exitCode: number | null;
+  ffmpegSpeed: string | null;
   groupTitle: string;
   inputBytes: number;
   inputMode: "ffmpeg-direct" | "node-pipe";

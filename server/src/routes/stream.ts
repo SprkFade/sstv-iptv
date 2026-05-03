@@ -255,6 +255,17 @@ function appendStderr(current: string, message: string) {
   return (current + message).slice(-STREAM_LOG_BUFFER_LENGTH);
 }
 
+function parseFfmpegSpeed(stderr: string) {
+  const matches = [...stderr.matchAll(/(?:^|\n)\s*speed=\s*([^\s\r\n]+)/g)];
+  for (const match of matches.reverse()) {
+    const value = match[1];
+    if (!value || value === "N/A") continue;
+    const numeric = Number(value.replace(/x$/i, ""));
+    if (Number.isFinite(numeric)) return `${numeric.toFixed(2)}x`;
+  }
+  return null;
+}
+
 function recordSessionEvent(session: HlsSession, message: string) {
   session.events = [...session.events, { at: new Date().toISOString(), message }].slice(-STREAM_EVENT_BUFFER_LENGTH);
 }
@@ -424,11 +435,13 @@ function sanitizeFfmpegStderrForStatus(stderr: string) {
     /^no frame!$/i,
     /^Last message repeated \d+ times$/i
   ];
+  const progressKeyPattern = /^(frame|fps|stream_\d+_\d+_q|bitrate|total_size|out_time_us|out_time_ms|out_time|dup_frames|drop_frames|speed|progress)=/i;
   const lines = stderr.split(/\r?\n/);
   let suppressed = 0;
   const visible = lines.filter((line) => {
     const trimmed = line.trim();
     if (!trimmed) return true;
+    if (progressKeyPattern.test(trimmed)) return false;
     if (noisyH264StartupPatterns.some((pattern) => pattern.test(trimmed))) {
       suppressed += 1;
       return false;
@@ -533,6 +546,8 @@ function ffmpegInputOptions(mode: HlsMode, logLevel = config.ffmpegLogLevel) {
     "-hide_banner",
     "-nostats",
     "-loglevel", logLevel,
+    "-stats_period", "2",
+    "-progress", "pipe:2",
     "-fflags", "+genpts+igndts+discardcorrupt",
     ...(mode === "normal" ? FFMPEG_NORMAL_PROBE_OPTIONS : FFMPEG_VIDEO_ONLY_PROBE_OPTIONS),
     ...FFMPEG_TIMESTAMP_OPTIONS,
@@ -549,6 +564,8 @@ function ffmpegDirectInputOptions(streamUrl: string, mode: HlsMode, runtime: Hls
     "-nostdin",
     "-nostats",
     "-loglevel", logLevel,
+    "-stats_period", "2",
+    "-progress", "pipe:2",
     ...(isHttpStream ? [
       "-user_agent", config.ffmpegUserAgent,
       "-reconnect", "1",
@@ -839,6 +856,7 @@ export function getActiveStreamMonitor() {
         clientCount: clients.length,
         clients,
         exitCode: session.exitCode,
+        ffmpegSpeed: parseFfmpegSpeed(session.stderr),
         groupTitle: channel?.group_title ?? "",
         inputBytes: session.inputBytes,
         inputMode: session.inputMode,
@@ -891,6 +909,7 @@ export function getActiveStreamMonitor() {
         clientCount: clients.length,
         clients,
         exitCode: activeSessions.length > 0 ? null : newestSession?.exitCode ?? null,
+        ffmpegSpeed: newestSession ? parseFfmpegSpeed(newestSession.stderr) : null,
         groupTitle: channel?.group_title ?? "",
         inputBytes: sessions.reduce((total, session) => total + session.inputBytes, 0),
         inputMode: "node-pipe" as HlsInputMode,

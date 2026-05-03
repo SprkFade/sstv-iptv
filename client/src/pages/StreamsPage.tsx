@@ -170,6 +170,9 @@ export function StreamsPage() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 lg:justify-end">
+                    <span className="rounded-md border border-line bg-panel px-3 py-2 text-xs font-bold text-ink/80" title="FFmpeg speed">
+                      {stream.ffmpegSpeed ?? "n/a"}
+                    </span>
                     <span className="rounded-md border border-line bg-panel px-3 py-2 text-xs font-bold text-ink/80">
                       Input {compactQuality(stream.quality.input)}
                     </span>
