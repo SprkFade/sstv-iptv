@@ -23,7 +23,7 @@ interface IndexedXmltvChannel {
 }
 
 export function matchChannels(m3uChannels: ParsedM3uChannel[], xmltvChannels: XmltvChannel[]) {
-  const byId = uniqueBy(xmltvChannels, (channel) => channel.id.toLowerCase());
+  const byId = firstBy(xmltvChannels, (channel) => channel.id.toLowerCase());
   const byName = uniqueBy(xmltvChannels, (channel) => channel.displayName.toLowerCase());
   const byNormalizedName = uniqueBy(xmltvChannels, (channel) => normalizeName(channel.displayName));
   const indexedXmltvChannels = xmltvChannels
@@ -130,6 +130,15 @@ function candidatePool(
 
 function uniqueTokens(value: string) {
   return new Set(value.split(" ").filter(Boolean));
+}
+
+function firstBy(channels: XmltvChannel[], keyFor: (channel: XmltvChannel) => string) {
+  const values = new Map<string, XmltvChannel>();
+  for (const channel of channels) {
+    const key = keyFor(channel);
+    if (key && !values.has(key)) values.set(key, channel);
+  }
+  return values;
 }
 
 function uniqueBy(channels: XmltvChannel[], keyFor: (channel: XmltvChannel) => string) {
