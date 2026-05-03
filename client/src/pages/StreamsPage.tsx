@@ -79,7 +79,7 @@ export function StreamsPage() {
               <p className="text-sm text-ink/60">Active HLS and MPEG-TS sessions with connected clients. Refreshes every {refreshIntervalSeconds} seconds.</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-ink/50">
               Refresh
               <select
