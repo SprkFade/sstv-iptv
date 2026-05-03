@@ -273,6 +273,30 @@ export function AdminPage() {
                 <span className="text-xs font-normal text-ink/55">0 keeps only the live playback buffer. Applies to new streams.</span>
               </label>
               <label className="grid min-w-0 gap-1 text-sm font-medium">
+                Startup buffer segments
+                <input
+                  className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"
+                  type="number"
+                  min={2}
+                  max={20}
+                  value={settings.ffmpegHlsStartupBufferSegments}
+                  onChange={(event) => setSettings({ ...settings, ffmpegHlsStartupBufferSegments: Number(event.target.value) })}
+                />
+                <span className="text-xs font-normal text-ink/55">More segments means slower start but fewer early playback holes.</span>
+              </label>
+              <label className="grid min-w-0 gap-1 text-sm font-medium">
+                Discard startup segments
+                <input
+                  className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={settings.ffmpegHlsStartupDiscardSegments}
+                  onChange={(event) => setSettings({ ...settings, ffmpegHlsStartupDiscardSegments: Number(event.target.value) })}
+                />
+                <span className="text-xs font-normal text-ink/55">Hides the earliest FFmpeg segments that often contain dirty startup frames.</span>
+              </label>
+              <label className="grid min-w-0 gap-1 text-sm font-medium">
                 Reconnect delay max seconds
                 <input
                   className="min-h-11 w-full min-w-0 rounded-md border border-line px-3"

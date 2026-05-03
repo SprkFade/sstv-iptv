@@ -24,6 +24,8 @@ adminRouter.get("/settings", async (_req, res, next) => {
       ffmpegRwTimeoutSeconds: Number(setting("ffmpeg_rw_timeout_seconds", "15")),
       ffmpegStaleRestartSeconds: Number(setting("ffmpeg_stale_restart_seconds", "30")),
       ffmpegHlsDvrWindowMinutes: Number(setting("ffmpeg_hls_dvr_window_minutes", "20")),
+      ffmpegHlsStartupBufferSegments: Number(setting("ffmpeg_hls_startup_buffer_segments", "4")),
+      ffmpegHlsStartupDiscardSegments: Number(setting("ffmpeg_hls_startup_discard_segments", "2")),
       externalInternalBaseUrl: setting("external_internal_base_url", "http://sstv-iptv:3025"),
       externalPublicBaseUrl: setting("external_public_base_url"),
       externalProfiles: listExternalProfiles(),
@@ -47,6 +49,8 @@ const settingsSchema = z.object({
   ffmpegRwTimeoutSeconds: z.number().int().min(5).max(120).optional().default(15),
   ffmpegStaleRestartSeconds: z.number().int().min(0).max(300).optional().default(30),
   ffmpegHlsDvrWindowMinutes: z.number().int().min(0).max(60).optional().default(20),
+  ffmpegHlsStartupBufferSegments: z.number().int().min(2).max(20).optional().default(4),
+  ffmpegHlsStartupDiscardSegments: z.number().int().min(0).max(10).optional().default(2),
   externalInternalBaseUrl: z.string().url().or(z.literal("")).optional().default(""),
   externalPublicBaseUrl: z.string().url().or(z.literal("")).optional().default(""),
   embyEnabled: z.boolean().optional().default(false),
@@ -89,6 +93,8 @@ adminRouter.put("/settings", (req, res) => {
   setSetting("ffmpeg_rw_timeout_seconds", String(body.ffmpegRwTimeoutSeconds));
   setSetting("ffmpeg_stale_restart_seconds", String(body.ffmpegStaleRestartSeconds));
   setSetting("ffmpeg_hls_dvr_window_minutes", String(body.ffmpegHlsDvrWindowMinutes));
+  setSetting("ffmpeg_hls_startup_buffer_segments", String(body.ffmpegHlsStartupBufferSegments));
+  setSetting("ffmpeg_hls_startup_discard_segments", String(body.ffmpegHlsStartupDiscardSegments));
   setSetting("external_internal_base_url", body.externalInternalBaseUrl);
   setSetting("external_public_base_url", body.externalPublicBaseUrl);
   setSetting("emby_enabled", String(body.embyEnabled));
