@@ -1,7 +1,12 @@
+import { createWriteStream } from "node:fs";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import Database from "better-sqlite3";
 import { config, ensureRuntimeDirs } from "../config.js";
 import { getDb, setting, setSetting } from "../db/database.js";
-import { parseSelectedXmltvPrograms, parseXmltvChannels } from "./xmltv.js";
+import { parseSelectedXmltvProgramsFromFile, parseXmltvChannelsFromFile } from "./xmltv.js";
 import { matchChannels } from "./match.js";
 import { fetchXcChannels, xcXmltvUrl, type XcCredentials } from "./xc.js";
 import { ensureChannelGroups, recalculateChannelNumbers } from "../services/channelGroups.js";
@@ -68,7 +73,7 @@ export function startRefreshGuide() {
   return { started: true, progress };
 }
 
-async function fetchText(url: string, label: string) {
+async function fetchToFile(url: string, label: string, filePath: string) {
   const response = await fetch(url, {
     headers: {
       "user-agent": "SSTV IPTV/1.0"
@@ -77,7 +82,13 @@ async function fetchText(url: string, label: string) {
   if (!response.ok) {
     throw new Error(`Fetch failed for ${label}: ${response.status} ${response.statusText}`);
   }
-  return response.text();
+  if (!response.body) {
+    throw new Error(`Fetch failed for ${label}: response body was empty.`);
+  }
+
+  await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(filePath));
+  const stats = await fs.stat(filePath);
+  return stats.size;
 }
 
 function yieldToEventLoop() {
@@ -120,6 +131,7 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
     startedAt: new Date().toISOString(),
     error: ""
   });
+  let xmltvFilePath = "";
 
   try {
     const xcCredentials = currentXcCredentials(overrides);
@@ -138,16 +150,18 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
       stage: "Loading guide sources",
       detail: "Fetching XtremeCodes live channels and XMLTV guide data."
     });
-    const [sourceChannels, xmltvText] = await Promise.all([
+    ensureRuntimeDirs();
+    xmltvFilePath = path.join(config.cacheDir, `xmltv-refresh-${runId}.xml`);
+    const [sourceChannels, xmltvBytes] = await Promise.all([
       fetchXcChannels(xcCredentials),
-      fetchText(xmltvUrl, "XMLTV guide")
+      fetchToFile(xmltvUrl, "XMLTV guide", xmltvFilePath)
     ]);
     setProgress({
       stage: "Parsing XMLTV guide",
-      detail: "Reading XMLTV channel listings.",
+      detail: `Reading XMLTV channel listings from ${(xmltvBytes / 1024 / 1024).toFixed(1)} MB guide file.`,
       channelCount: sourceChannels.length
     });
-    const xmltvChannels = await parseXmltvChannels(xmltvText, (parseProgress) => {
+    const xmltvChannels = await parseXmltvChannelsFromFile(xmltvFilePath, (parseProgress) => {
       setProgress({
         stage: "Parsing XMLTV guide",
         detail: `Parsed ${parseProgress.channels} XMLTV channels.`,
@@ -171,8 +185,7 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
       let savedChannelCount = 0;
       let savedProgramCount = 0;
       const ingestDb = openIngestDb();
-      const xmltvToChannelId = new Map<string, number>();
-      const programRows: Array<[number, string, string, string, string, string, string]> = [];
+      const xmltvToChannelIds = new Map<string, number[]>();
       try {
         ingestDb.prepare("BEGIN IMMEDIATE").run();
         ingestDb.prepare("UPDATE channels SET enabled = 0, updated_at = CURRENT_TIMESTAMP").run();
@@ -227,7 +240,11 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
             ? (updateChannel.run(...values, existing.id), existing.id)
             : Number(insertChannel.run(...values).lastInsertRowid);
 
-          if (xmltvMatch?.id) xmltvToChannelId.set(xmltvMatch.id, channelId);
+          if (xmltvMatch?.id) {
+            const channelIds = xmltvToChannelIds.get(xmltvMatch.id) ?? [];
+            channelIds.push(channelId);
+            xmltvToChannelIds.set(xmltvMatch.id, channelIds);
+          }
           savedChannelCount += 1;
           if (savedChannelCount % 250 === 0 || savedChannelCount === sourceChannels.length) {
             setProgress({
@@ -251,22 +268,42 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
           savedProgramCount: 0
         });
 
-        const programCounts = await parseSelectedXmltvPrograms(
-          xmltvText,
-          new Set(xmltvToChannelId.keys()),
+        ingestDb
+          .prepare(
+            `CREATE TEMP TABLE refresh_programs (
+              channel_id INTEGER NOT NULL,
+              title TEXT NOT NULL,
+              subtitle TEXT,
+              description TEXT,
+              category TEXT,
+              start_time TEXT NOT NULL,
+              end_time TEXT NOT NULL
+            )`
+          )
+          .run();
+        const insertRefreshProgram = ingestDb.prepare(
+          `INSERT INTO refresh_programs
+           (channel_id, title, subtitle, description, category, start_time, end_time)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        );
+        const programCounts = await parseSelectedXmltvProgramsFromFile(
+          xmltvFilePath,
+          new Set(xmltvToChannelIds.keys()),
           (program) => {
-            const channelId = xmltvToChannelId.get(program.channelXmltvId);
-            if (!channelId) return;
-            programRows.push([
-              channelId,
-              program.title,
-              program.subtitle,
-              program.description,
-              program.category,
-              program.startTime,
-              program.endTime
-            ]);
-            savedProgramCount += 1;
+            const channelIds = xmltvToChannelIds.get(program.channelXmltvId);
+            if (!channelIds) return;
+            for (const channelId of channelIds) {
+              insertRefreshProgram.run(
+                channelId,
+                program.title,
+                program.subtitle,
+                program.description,
+                program.category,
+                program.startTime,
+                program.endTime
+              );
+              savedProgramCount += 1;
+            }
           },
           {
             windowStart,
@@ -283,32 +320,27 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
         );
 
         setProgress({
-          stage: "Saving guide programs",
-          detail: `Saving ${programRows.length} upcoming program entries.`,
+          stage: "Finalizing guide programs",
+          detail: `Saved ${savedProgramCount} upcoming program entries.`,
           savedChannelCount,
           savedProgramCount,
           totalProgramCount: programCounts.scanned,
           programCount: savedProgramCount
         });
-
         ingestDb.prepare("BEGIN IMMEDIATE").run();
         ingestDb.prepare("DELETE FROM programs").run();
-        for (let index = 0; index < programRows.length; index += 1) {
-          insertProgram.run(...programRows[index]);
-          if ((index + 1) % 1000 === 0) {
-            setProgress({
-              detail: `Saved ${index + 1}/${programRows.length} upcoming program entries.`,
-              savedProgramCount: index + 1,
-              programCount: index + 1
-            });
-            await yieldToEventLoop();
-          }
-        }
+        ingestDb
+          .prepare(
+            `INSERT INTO programs (channel_id, title, subtitle, description, category, start_time, end_time)
+             SELECT channel_id, title, subtitle, description, category, start_time, end_time
+             FROM refresh_programs`
+          )
+          .run();
         ingestDb.prepare("COMMIT").run();
 
         return {
           channelCount: sourceChannels.length,
-          programCount: { count: programRows.length },
+          programCount: { count: savedProgramCount },
           matchedCount
         };
       } catch (error) {
@@ -372,5 +404,9 @@ export async function refreshGuide(overrides?: Partial<XcCredentials> & { xmltvU
       error: message
     });
     throw error;
+  } finally {
+    if (xmltvFilePath) {
+      await fs.rm(xmltvFilePath, { force: true }).catch(() => undefined);
+    }
   }
 }
