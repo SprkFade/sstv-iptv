@@ -69,10 +69,8 @@ export function AdminPage() {
   const [providerDraft, setProviderDraft] = useState({
     maxConnections: 1,
     name: "Profile 2",
-    passwordPattern: "(.*)",
-    passwordReplacement: "$1",
-    usernamePattern: "(\\d+)$",
-    usernameReplacement: "2"
+    password: "",
+    username: ""
   });
 
   const load = async () => {
@@ -360,9 +358,9 @@ export function AdminPage() {
               ))}
             </div>
             <div className="mt-3 rounded-md border border-line bg-panel p-3">
-              <h3 className="font-bold">Add generated profile</h3>
-              <p className="mt-1 text-sm text-ink/60">Regex replacements run against the primary username and password. JavaScript replacement groups like $1 are supported.</p>
-              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <h3 className="font-bold">Add provider profile</h3>
+              <p className="mt-1 text-sm text-ink/60">Streams will keep the same provider server and channel URL, but replace the primary username/password with this profile&apos;s credentials.</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <label className="grid gap-1 text-sm font-medium">
                   Name
                   <input className="min-h-10 rounded-md border border-line px-3" value={providerDraft.name} onChange={(event) => setProviderDraft({ ...providerDraft, name: event.target.value })} />
@@ -372,29 +370,27 @@ export function AdminPage() {
                   <input className="min-h-10 rounded-md border border-line px-3" type="number" min={1} max={100} value={providerDraft.maxConnections} onChange={(event) => setProviderDraft({ ...providerDraft, maxConnections: Number(event.target.value) })} />
                 </label>
                 <label className="grid gap-1 text-sm font-medium">
-                  Username regex
-                  <input className="min-h-10 rounded-md border border-line px-3 font-mono" value={providerDraft.usernamePattern} onChange={(event) => setProviderDraft({ ...providerDraft, usernamePattern: event.target.value })} />
+                  Username
+                  <input className="min-h-10 rounded-md border border-line px-3" value={providerDraft.username} onChange={(event) => setProviderDraft({ ...providerDraft, username: event.target.value })} />
                 </label>
                 <label className="grid gap-1 text-sm font-medium">
-                  Username replacement
-                  <input className="min-h-10 rounded-md border border-line px-3 font-mono" value={providerDraft.usernameReplacement} onChange={(event) => setProviderDraft({ ...providerDraft, usernameReplacement: event.target.value })} />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Password regex
-                  <input className="min-h-10 rounded-md border border-line px-3 font-mono" value={providerDraft.passwordPattern} onChange={(event) => setProviderDraft({ ...providerDraft, passwordPattern: event.target.value })} />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Password replacement
-                  <input className="min-h-10 rounded-md border border-line px-3 font-mono" value={providerDraft.passwordReplacement} onChange={(event) => setProviderDraft({ ...providerDraft, passwordReplacement: event.target.value })} />
+                  Password
+                  <input className="min-h-10 rounded-md border border-line px-3" type="password" value={providerDraft.password} onChange={(event) => setProviderDraft({ ...providerDraft, password: event.target.value })} />
                 </label>
               </div>
               <button
                 type="button"
-                className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-white"
+                className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-white disabled:opacity-60"
+                disabled={!providerDraft.name.trim() || !providerDraft.username.trim() || !providerDraft.password}
                 onClick={async () => {
                   const response = await api.createProviderProfile(providerDraft);
                   setProviderProfiles(response.profiles);
-                  setProviderDraft({ ...providerDraft, name: `Profile ${response.profiles.length + 1}` });
+                  setProviderDraft({
+                    maxConnections: 1,
+                    name: `Profile ${response.profiles.length + 1}`,
+                    password: "",
+                    username: ""
+                  });
                 }}
               >
                 Add provider profile

@@ -8,7 +8,7 @@ import { getActiveStreamMonitor } from "./stream.js";
 import { listExternalProfiles, regenerateExternalToken, regenerateExternalXcPassword, updateExternalProfile } from "../services/externalAccess.js";
 import { embyStatus, listEmbyTasks, triggerEmbyGuideRefresh } from "../services/emby.js";
 import {
-  createGeneratedProviderProfile,
+  createProviderProfile,
   deleteProviderProfile,
   listProviderProfiles,
   refreshProviderAccount,
@@ -93,13 +93,11 @@ const providerProfileUpdateSchema = z.object({
   username: z.string().trim().min(1).max(200).optional()
 });
 
-const providerProfileGenerateSchema = z.object({
+const providerProfileCreateSchema = z.object({
   maxConnections: z.number().int().min(1).max(100).optional().default(1),
   name: z.string().trim().min(1).max(80),
-  passwordPattern: z.string().min(1).max(300),
-  passwordReplacement: z.string().max(300),
-  usernamePattern: z.string().min(1).max(300),
-  usernameReplacement: z.string().max(300)
+  password: z.string().min(1).max(500),
+  username: z.string().trim().min(1).max(200)
 });
 
 adminRouter.put("/settings", (req, res) => {
@@ -214,8 +212,8 @@ adminRouter.get("/provider-profiles", (_req, res) => {
 });
 
 adminRouter.post("/provider-profiles", (req, res) => {
-  const body = providerProfileGenerateSchema.parse(req.body);
-  const profile = createGeneratedProviderProfile(body);
+  const body = providerProfileCreateSchema.parse(req.body);
+  const profile = createProviderProfile(body);
   res.status(201).json({ profile, profiles: listProviderProfiles() });
 });
 

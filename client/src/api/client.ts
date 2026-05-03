@@ -384,10 +384,8 @@ export const api = {
   createProviderProfile: (body: {
     maxConnections?: number;
     name: string;
-    passwordPattern: string;
-    passwordReplacement: string;
-    usernamePattern: string;
-    usernameReplacement: string;
+    password: string;
+    username: string;
   }) => request<{ profile: ProviderProfile; profiles: ProviderProfile[] }>("/api/admin/provider-profiles", { method: "POST", body: JSON.stringify(body) }),
   updateProviderProfile: (id: number, body: { enabled?: boolean; maxConnections?: number; name?: string; password?: string; username?: string }) =>
     request<{ profile: ProviderProfile; profiles: ProviderProfile[] }>(`/api/admin/provider-profiles/${id}`, { method: "PUT", body: JSON.stringify(body) }),

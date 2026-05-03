@@ -19,13 +19,11 @@ export type ProviderProfileInput = {
   maxConnections?: number;
 };
 
-export type GeneratedProviderProfileInput = {
+export type CreateProviderProfileInput = {
   maxConnections?: number;
   name: string;
-  passwordPattern: string;
-  passwordReplacement: string;
-  usernamePattern: string;
-  usernameReplacement: string;
+  password: string;
+  username: string;
 };
 
 export function listProviderProfiles(db = getDb()) {
@@ -92,23 +90,12 @@ export function updateProviderProfile(id: number, body: ProviderProfileInput, db
   return listProviderProfiles(db).find((profile) => profile.id === id) ?? null;
 }
 
-export function createGeneratedProviderProfile(body: GeneratedProviderProfileInput, db = getDb()) {
-  const primary = listProviderProfiles(db).find((profile) => profile.is_primary);
-  if (!primary) throw new Error("Primary provider profile is not configured.");
-
-  const usernameRegex = new RegExp(body.usernamePattern);
-  const passwordRegex = new RegExp(body.passwordPattern);
-  const username = primary.username.replace(usernameRegex, body.usernameReplacement);
-  const password = primary.password.replace(passwordRegex, body.passwordReplacement);
-  if (username === primary.username && password === primary.password) {
-    throw new Error("Regex replacements did not change the primary username or password.");
-  }
-
+export function createProviderProfile(body: CreateProviderProfileInput, db = getDb()) {
   const nextSort = db.prepare("SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM provider_profiles").get() as { next: number };
   const result = db.prepare(
     `INSERT INTO provider_profiles (name, enabled, is_primary, username, password, max_connections, sort_order)
      VALUES (?, 1, 0, ?, ?, ?, ?)`
-  ).run(body.name, username, password, Math.max(1, Math.round(body.maxConnections ?? 1)), nextSort.next);
+  ).run(body.name, body.username, body.password, Math.max(1, Math.round(body.maxConnections ?? 1)), nextSort.next);
   return listProviderProfiles(db).find((profile) => profile.id === Number(result.lastInsertRowid)) ?? null;
 }
 
