@@ -51,6 +51,10 @@ function ratio(left: string, right: string) {
 export function similarity(a: string, b: string) {
   const left = normalizeName(a);
   const right = normalizeName(b);
+  return similarityNormalized(left, right);
+}
+
+export function similarityNormalized(left: string, right: string) {
   if (!left || !right) return 0;
   if (left === right) return 1;
 

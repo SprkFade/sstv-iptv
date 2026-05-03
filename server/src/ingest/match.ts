@@ -1,5 +1,5 @@
 import type { ParsedM3uChannel, XmltvChannel } from "../types/app.js";
-import { normalizeName, similarity } from "../utils/normalize.js";
+import { normalizeName, similarityNormalized } from "../utils/normalize.js";
 
 export type ChannelMatchMethod = "tvg-id" | "exact-name" | "normalized-name" | "fuzzy";
 
@@ -17,10 +17,19 @@ export interface ChannelMatchCandidate {
   scoreGap: number;
 }
 
+interface IndexedXmltvChannel {
+  channel: XmltvChannel;
+  normalizedName: string;
+}
+
 export function matchChannels(m3uChannels: ParsedM3uChannel[], xmltvChannels: XmltvChannel[]) {
   const byId = uniqueBy(xmltvChannels, (channel) => channel.id.toLowerCase());
   const byName = uniqueBy(xmltvChannels, (channel) => channel.displayName.toLowerCase());
   const byNormalizedName = uniqueBy(xmltvChannels, (channel) => normalizeName(channel.displayName));
+  const indexedXmltvChannels = xmltvChannels
+    .map((channel) => ({ channel, normalizedName: normalizeName(channel.displayName) }))
+    .filter((channel) => channel.normalizedName);
+  const tokenIndex = buildTokenIndex(indexedXmltvChannels);
 
   let matchedCount = 0;
   const result = new Map<number, ChannelMatch>();
@@ -53,17 +62,20 @@ export function matchChannels(m3uChannels: ParsedM3uChannel[], xmltvChannels: Xm
     }
 
     if (!match) {
+      const normalizedDisplayName = normalizeName(channel.displayName);
+      const normalizedTvgName = normalizeName(channel.tvgName);
+      const fuzzyCandidates = candidatePool(tokenIndex, normalizedDisplayName, normalizedTvgName);
       let bestScore = 0;
       let secondBestScore = 0;
-      for (const candidate of xmltvChannels) {
+      for (const candidate of fuzzyCandidates) {
         const candidateScore = Math.max(
-          similarity(channel.displayName, candidate.displayName),
-          similarity(channel.tvgName, candidate.displayName)
+          similarityNormalized(normalizedDisplayName, candidate.normalizedName),
+          similarityNormalized(normalizedTvgName, candidate.normalizedName)
         );
         if (candidateScore > bestScore) {
           secondBestScore = bestScore;
           bestScore = candidateScore;
-          match = candidate;
+          match = candidate.channel;
         } else if (candidateScore > secondBestScore) {
           secondBestScore = candidateScore;
         }
@@ -87,6 +99,37 @@ export function matchChannels(m3uChannels: ParsedM3uChannel[], xmltvChannels: Xm
   });
 
   return { matches: result, candidates, matchedCount };
+}
+
+function buildTokenIndex(channels: IndexedXmltvChannel[]) {
+  const index = new Map<string, IndexedXmltvChannel[]>();
+  for (const channel of channels) {
+    for (const token of uniqueTokens(channel.normalizedName)) {
+      if (token.length < 2) continue;
+      const list = index.get(token) ?? [];
+      list.push(channel);
+      index.set(token, list);
+    }
+  }
+  return index;
+}
+
+function candidatePool(
+  index: Map<string, IndexedXmltvChannel[]>,
+  ...normalizedNames: string[]
+) {
+  const candidates = new Set<IndexedXmltvChannel>();
+  for (const name of normalizedNames) {
+    for (const token of uniqueTokens(name)) {
+      if (token.length < 2) continue;
+      for (const candidate of index.get(token) ?? []) candidates.add(candidate);
+    }
+  }
+  return candidates;
+}
+
+function uniqueTokens(value: string) {
+  return new Set(value.split(" ").filter(Boolean));
 }
 
 function uniqueBy(channels: XmltvChannel[], keyFor: (channel: XmltvChannel) => string) {
