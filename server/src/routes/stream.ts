@@ -1,5 +1,4 @@
 import { Readable } from "node:stream";
-import { finished } from "node:stream/promises";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
@@ -81,6 +80,11 @@ type StreamQuality = {
     sampleRate: number | null;
   } | null;
 };
+
+function isBrokenPipeError(error: unknown) {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === "EPIPE" || code === "ECONNRESET" || code === "ERR_STREAM_PREMATURE_CLOSE" || code === "ERR_STREAM_DESTROYED";
+}
 
 type HlsClientStats = {
   id: string;
@@ -557,19 +561,49 @@ function pipeProviderStreamToFfmpeg(
 
         consecutiveFailures = 0;
         const input = Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
-        const destroyInput = () => input.destroy();
-        input.on("data", (chunk: Buffer) => {
-          onInputChunk?.(chunk.byteLength);
-        });
         input.on("error", (error) => {
-          if (!abort.signal.aborted) onError(`\nNode stream input error: ${error.message}`);
+          if (!abort.signal.aborted && !isBrokenPipeError(error)) onError(`\nNode stream input error: ${error.message}`);
         });
-        ffmpeg.stdin.once("error", destroyInput);
-        input.pipe(ffmpeg.stdin, { end: false });
+
+        const handleStdinError = (error: Error) => {
+          if (isBrokenPipeError(error) || abort.signal.aborted || ffmpeg.exitCode !== null || ffmpeg.stdin.destroyed) {
+            input.destroy();
+            return;
+          }
+          input.destroy(error);
+        };
+        ffmpeg.stdin.on("error", handleStdinError);
         try {
-          await finished(input, { cleanup: true });
+          for await (const chunk of input) {
+            if (abort.signal.aborted || ffmpeg.exitCode !== null || ffmpeg.stdin.destroyed) return;
+            onInputChunk?.(typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.byteLength);
+
+            try {
+              if (!ffmpeg.stdin.write(chunk)) {
+                await new Promise<void>((resolve, reject) => {
+                  const cleanup = () => {
+                    ffmpeg.stdin.off("drain", handleDrain);
+                    ffmpeg.stdin.off("error", handleError);
+                  };
+                  const handleDrain = () => {
+                    cleanup();
+                    resolve();
+                  };
+                  const handleError = (error: Error) => {
+                    cleanup();
+                    reject(error);
+                  };
+                  ffmpeg.stdin.once("drain", handleDrain);
+                  ffmpeg.stdin.once("error", handleError);
+                });
+              }
+            } catch (error) {
+              if (isBrokenPipeError(error) || abort.signal.aborted || ffmpeg.exitCode !== null || ffmpeg.stdin.destroyed) return;
+              throw error;
+            }
+          }
         } finally {
-          ffmpeg.stdin.off("error", destroyInput);
+          ffmpeg.stdin.off("error", handleStdinError);
         }
         if (!abort.signal.aborted && ffmpeg.exitCode === null) {
           onError("\nProvider stream ended; reconnecting.");
@@ -1407,11 +1441,16 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
     session.client.lastSeen = session.lastAccess;
     recordMpegTsSessionEvent(session, "MPEG-TS client disconnected; stopping transcode stream.");
     inputAbort.abort();
+    ffmpeg.stdout.unpipe(res);
     if (!ffmpeg.killed) ffmpeg.kill("SIGTERM");
   };
 
   req.on("close", stop);
   res.on("close", stop);
+  res.on("error", (error) => {
+    stop();
+    if (!isBrokenPipeError(error)) next(error);
+  });
 
   ffmpeg.stderr.setEncoding("utf8");
   ffmpeg.stderr.on("data", (chunk: string) => {
@@ -1424,6 +1463,13 @@ function sendMpegTsTranscode(req: AuthedRequest, res: Response, next: NextFuncti
     session.client.bytesServed = session.bytesServed;
     session.lastAccess = Date.now();
     session.client.lastSeen = session.lastAccess;
+  });
+  ffmpeg.stdout.on("error", (error) => {
+    if (closedByClient || isBrokenPipeError(error)) {
+      stop();
+      return;
+    }
+    next(error);
   });
 
   ffmpeg.on("error", (error) => {
@@ -1519,9 +1565,25 @@ streamRouter.get("/:channelId", async (req: AuthedRequest, res, next) => {
     res.setHeader("x-accel-buffering", "no");
     res.flushHeaders();
 
-    Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0]).pipe(res);
+    const input = Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
+    let forwardedError = false;
+    const forwardError = (error: Error) => {
+      if (abort.signal.aborted || isBrokenPipeError(error)) return;
+      if (forwardedError) return;
+      forwardedError = true;
+      next(error);
+    };
+    const stopInput = () => input.destroy();
+
+    res.on("close", stopInput);
+    res.on("error", (error) => {
+      stopInput();
+      forwardError(error);
+    });
+    input.on("error", forwardError);
+    input.pipe(res);
   } catch (error) {
-    if (abort.signal.aborted) return;
+    if (abort.signal.aborted || isBrokenPipeError(error)) return;
     next(error);
   }
 });

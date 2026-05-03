@@ -15,6 +15,11 @@ const server = app.listen(config.port, () => {
 
 let shuttingDown = false;
 
+function isBrokenPipeError(error: unknown) {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === "EPIPE" || code === "ECONNRESET" || code === "ERR_STREAM_PREMATURE_CLOSE" || code === "ERR_STREAM_DESTROYED";
+}
+
 function shutdown(reason: string, exitCode = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -46,6 +51,13 @@ function shutdown(reason: string, exitCode = 0) {
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("uncaughtException", (error) => {
+  if (isBrokenPipeError(error)) {
+    console.warn("Ignored broken stream pipe", {
+      code: (error as NodeJS.ErrnoException).code,
+      syscall: (error as NodeJS.ErrnoException).syscall
+    });
+    return;
+  }
   console.error("Uncaught exception", error);
   shutdown("uncaughtException", 1);
 });
